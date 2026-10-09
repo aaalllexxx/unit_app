@@ -1,0 +1,46 @@
+{% from '_icons.html' import icon, sprite, initials %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}Лаборатория UNIT{% endblock %}</title>
+  <meta name="theme-color" content="#f6f6f3">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/lab.css?v=1">
+  <link rel="icon" href="/static/logo.png">
+</head>
+<body>
+{{ sprite() }}
+{% block body %}
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/home"><span class="mark" aria-hidden="true"></span><b>UNIT</b><span class="sub">Лаборатория</span></a>
+    {% if me and me.role != 'pending' %}
+    {% set here = request.path %}
+    <nav class="nav">
+      <a href="/home" class="{{ 'on' if here == '/home' }}">{{ icon('home', 16) }}Главная</a>
+      <a href="/projects" class="{{ 'on' if here.startswith('/p') }}">{{ icon('folder', 16) }}Проекты</a>
+      {% if me.role != 'customer' %}
+      <a href="/people" class="{{ 'on' if here.startswith('/people') or here.startswith('/d/') }}">{{ icon('users', 16) }}Люди</a>
+      <a href="/time" class="{{ 'on' if here == '/time' }}">{{ icon('clock', 16) }}Время</a>
+      {% endif %}
+      {% if me.role == 'head' %}<a href="/admin" class="{{ 'on' if here == '/admin' }}">{{ icon('chart', 16) }}Обзор</a>{% endif %}
+    </nav>
+    {% endif %}
+    {% if me %}
+    <div class="who">
+      <a class="avatar" href="{{ '/people/' ~ me.id if me.role not in ('customer', 'pending') else '#' }}" title="{{ me.name }}">{{ initials(me.name) }}</a>
+      <a class="btn btn-quiet btn-sm" href="/logout" title="Выйти" aria-label="Выйти">{{ icon('logout', 16) }}</a>
+    </div>
+    {% endif %}
+  </div>
+</header>
+<main class="page wrap">
+  {% with messages = get_flashed_messages(with_categories=true) %}{% for c, m in messages %}<div class="flash {{ c }}" style="margin-bottom: 16px">{{ m }}</div>{% endfor %}{% endwith %}
+  {% block content %}{% endblock %}
+</main>
+{% endblock %}
+</body>
+</html>

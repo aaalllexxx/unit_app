@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}Учёт времени — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Учёт времени</h1><p>Сколько часов и на какие проекты ушло за неделю.</p></div>
+  <div class="row spacer">
+    <a class="btn btn-ghost btn-sm" href="/time?week={{ prev }}">{{ icon('back', 14) }}</a>
+    <span class="small mono">{{ start.strftime('%d.%m') }} — {{ days[-1].strftime('%d.%m.%Y') }}</span>
+    <a class="btn btn-ghost btn-sm" href="/time?week={{ next }}">{{ icon('arrow', 14) }}</a>
+  </div>
+</div>
+<form method="post" action="/time?week={{ start }}" class="card card-pad grid" style="grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); margin-bottom: 20px">
+  <label class="field"><span class="label">Проект</span><select class="select" name="project_id" required>{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select></label>
+  <label class="field"><span class="label">Задача</span><select class="select" name="task_id"><option value="">—</option>{% for t in tasks %}<option value="{{ t.id }}">{{ t.title[:60] }}</option>{% endfor %}</select></label>
+  <label class="field"><span class="label">День</span><input class="input" type="date" name="day" value="{{ today }}"></label>
+  <label class="field"><span class="label">Часы</span><input class="input" name="hours" placeholder="1,5" required></label>
+  <label class="field" style="grid-column: 1 / -1"><span class="label">Что делали</span><input class="input" name="note" placeholder="Коротко"></label>
+  <button class="btn btn-primary" type="submit" style="justify-self: start">{{ icon('plus', 15) }}Записать</button>
+</form>
+<div class="card scroll-x">
+  <table class="t">
+    <tr><th>День</th><th>Проект</th><th>Что делали</th><th style="text-align: right">Часы</th><th></th></tr>
+    {% for e in entries %}
+    <tr><td class="mono">{{ e.day.strftime('%a %d.%m') }}</td><td>{{ names.get(e.project_id, '—') }}</td><td class="muted">{{ e.note }}</td>
+      <td class="mono" style="text-align: right">{{ '%g' % e.hours }}</td>
+      <td style="width: 40px"><form method="post" action="/time?week={{ start }}"><button class="btn btn-quiet btn-sm" name="delete" value="{{ e.id }}" type="submit" aria-label="Удалить">{{ icon('trash', 14) }}</button></form></td></tr>
+    {% else %}<tr><td colspan="5" class="faint">За эту неделю записей нет.</td></tr>{% endfor %}
+    {% if entries %}<tr><td colspan="3"><b>Итого</b></td><td class="mono" style="text-align: right"><b>{{ '%g' % (entries|sum(attribute='hours')) }}</b></td><td></td></tr>{% endif %}
+  </table>
+</div>
+{% endblock %}

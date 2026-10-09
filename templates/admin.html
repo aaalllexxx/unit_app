@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials, progress %}
+{% block title %}Обзор — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Обзор лаборатории</h1><p>Загрузка людей, состояние проектов и доступы.</p></div></div>
+
+<h2 style="margin-bottom: 12px">Проекты в работе</h2>
+<div class="card list" style="margin-bottom: 28px">
+  {% for h in health %}
+  <a class="item" href="/p/{{ h.p.id }}">
+    <span style="flex: 1">{{ h.p.title }}</span>
+    <span class="chip {{ 's-done' if h.state == 'ok' else 's-paused' if h.state == 'risk' else '' }}" style="{{ 'background: #fbecee; color: var(--bad)' if h.state == 'late' }}">
+      {{ 'В срок' if h.state == 'ok' else 'Есть риск' if h.state == 'risk' else 'Просрочен' }}</span>
+    <span style="width: 140px">{{ progress(h.percent) }}</span><span class="mono small" style="width: 42px; text-align: right">{{ h.percent }}%</span>
+  </a>
+  {% else %}<div class="item small faint">Активных проектов нет.</div>{% endfor %}
+</div>
+
+<h2 style="margin-bottom: 12px">Люди и доступы</h2>
+<div class="card scroll-x">
+  <table class="t">
+    <tr><th>Человек</th><th>Направление</th><th>Открытых задач</th><th>Часов за неделю</th><th>Дней за месяц</th><th>Роль</th></tr>
+    {% for m in members %}{% set l = load[m.id] %}
+    <tr>
+      <td><a class="row" href="{{ '/people/' ~ m.id if m.role not in ('customer', 'pending') else '#' }}" style="text-decoration: none"><span class="avatar">{{ initials(m.name) }}</span><span><b style="font-weight: 600">{{ m.name }}</b><br><span class="tiny faint">{{ m.email }}</span></span></a></td>
+      <td class="small">{{ dirs[m.direction_id].title if dirs.get(m.direction_id) else '—' }}</td>
+      <td class="mono">{{ l.open }}</td><td class="mono">{{ '%g' % l.hours }}</td><td class="mono">{{ l.days30 }}</td>
+      <td>
+        {% if m.id != me.id %}
+        <form method="post" class="row" style="gap: 6px">
+          <input type="hidden" name="member_id" value="{{ m.id }}">
+          <select class="select" name="role" style="width: auto; height: 34px">{% for k, v in roles.items() %}<option value="{{ k }}" {{ 'selected' if k == m.role }}>{{ v }}</option>{% endfor %}</select>
+          <input class="input" name="company" value="{{ m.company }}" placeholder="Компания (заказчик)" style="width: 160px; height: 34px">
+          <button class="btn btn-ghost btn-sm" type="submit">{{ icon('check', 14) }}</button>
+        </form>
+        {% else %}<span class="small faint">{{ roles[m.role] }} (вы)</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

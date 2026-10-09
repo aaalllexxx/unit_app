@@ -1,0 +1,33 @@
+# Портал IT-лаборатории UNIT (app.labunit.ru).
+# На сервере: /home/unit_app, рядом .env с LAB_CLIENT_ID / LAB_CLIENT_SECRET (выдаёт UNIT ID).
+#   docker compose up -d --build
+services:
+  lab:
+    build: .
+    image: unit-app:current
+    container_name: unit-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5008:5008"
+    environment:
+      TZ: Europe/Moscow
+      LAB_ISSUER: ${LAB_ISSUER:-https://auth.labunit.ru}
+      LAB_SITE: ${LAB_SITE:-https://app.labunit.ru}
+      LAB_CLIENT_ID: ${LAB_CLIENT_ID:-}
+      LAB_CLIENT_SECRET: ${LAB_CLIENT_SECRET:-}
+      LAB_CONTACT: ${LAB_CONTACT:-}
+      # Письма — через почтовый сервер этой машины (postfix на адресе моста Docker)
+      LAB_SMTP_HOST: ${LAB_SMTP_HOST:-172.17.0.1}
+      LAB_MAIL_FROM: ${LAB_MAIL_FROM:-Лаборатория UNIT <noreply@labunit.ru>}
+    volumes:
+      - lab-data:/app/data
+    mem_limit: 300m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5008/healthz').status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  lab-data:

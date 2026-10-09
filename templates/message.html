@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="card card-pad stack" style="max-width: 520px; margin: 40px auto">
+  <h1 style="font-size: 24px">{{ title }}</h1>
+  <p class="muted">{{ text }}</p>
+  <div class="row"><a class="btn btn-ghost" href="/">На главную</a>{% if not me %}<a class="btn btn-primary" href="/login">Войти</a>{% endif %}</div>
+</div>
+{% endblock %}

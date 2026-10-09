@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, dir_icon, initials, progress %}
+{% block title %}{{ d.title }} — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <span class="dir" style="padding: 0"><span class="badge t-{{ d.tone }}" style="width: 48px; height: 48px">{{ dir_icon(d) }}</span></span>
+  <div><h1>{{ d.title }}</h1><p>{{ d.about }}</p></div>
+</div>
+<div class="grid" style="grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); align-items: start">
+  <div class="stack">
+    <div class="card list">
+      <div class="item"><h3>Проекты направления</h3></div>
+      {% for p in projects %}
+      <a class="item" href="/p/{{ p.id }}"><span style="flex: 1">{{ p.title }}</span><span class="chip s-{{ p.status }}">{{ statuses[p.status] }}</span>
+        <span style="width: 120px">{{ progress(percents[p.id]) }}</span><span class="mono small" style="width: 42px; text-align: right">{{ percents[p.id] }}%</span></a>
+      {% else %}<div class="item small faint">Проектов пока нет.</div>{% endfor %}
+    </div>
+    <div class="card list">
+      <div class="item"><h3>Сотрудники</h3><span class="chip spacer">{{ members|length }}</span></div>
+      {% for m in members %}
+      <a class="item" href="/people/{{ m.id }}"><span class="avatar">{{ initials(m.name) }}</span><span style="flex: 1">{{ m.name }}</span>
+        <span class="tiny faint">{{ m.position }}{% if m.grade %} · {{ m.grade }}{% endif %}</span></a>
+      {% else %}<div class="item small faint">Пока никого.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="stack">
+    <div class="card card-pad stack-sm">
+      <h3>Руководитель</h3>
+      {% if lead %}<a class="row" href="/people/{{ lead.id }}" style="text-decoration: none"><span class="avatar">{{ initials(lead.name) }}</span>{{ lead.name }}</a>{% else %}<p class="small faint">Не назначен.</p>{% endif %}
+      <h3 style="margin-top: 10px">Группы</h3>
+      {% for t in teams %}<span class="chip" style="align-self: flex-start">{{ t.title }}</span>{% else %}<p class="small faint">Групп пока нет.</p>{% endfor %}
+    </div>
+    {% if me.role == 'head' %}
+    <details class="card card-pad">
+      <summary style="cursor: pointer; font-weight: 600">{{ icon('pen', 15) }} Настроить направление</summary>
+      <form method="post" class="stack-sm" style="margin-top: 12px">
+        <label class="field"><span class="label">Описание</span><textarea class="input" name="about" rows="3">{{ d.about }}</textarea></label>
+        <label class="field"><span class="label">Руководитель</span><select class="select" name="lead_id"><option value="">—</option>{% for m in staff %}<option value="{{ m.id }}" {{ 'selected' if m.id == d.lead_id }}>{{ m.name }}</option>{% endfor %}</select></label>
+        <button class="btn btn-primary btn-sm" type="submit" style="align-self: flex-start">Сохранить</button>
+      </form>
+      <form method="post" class="row" style="margin-top: 12px">
+        <input class="input" name="team" placeholder="Новая группа" required><button class="btn btn-ghost btn-sm" type="submit">{{ icon('plus', 14) }}</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

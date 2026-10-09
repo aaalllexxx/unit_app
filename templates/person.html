@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials %}
+{% block title %}{{ m.name }} — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="grid" style="grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); align-items: start">
+  <div class="stack">
+    <div class="card card-pad row-wrap" style="gap: 18px">
+      <span class="avatar lg">{{ initials(m.name) }}</span>
+      <div class="stack-sm" style="flex: 1; min-width: 200px; gap: 4px">
+        <h1 style="font-size: 26px">{{ m.name }}</h1>
+        <div class="muted">{{ m.position or roles[m.role] }}{% if m.grade %} · {{ m.grade }}{% endif %}</div>
+        <div class="row-wrap tiny faint">
+          {% for d in dirs if d.id == m.direction_id %}<a href="/d/{{ d.slug }}" class="chip t-{{ d.tone }}" style="text-decoration: none">{{ d.title }}</a>{% endfor %}
+          {% for t in teams if t.id == m.team_id %}<span class="chip">{{ t.title }}</span>{% endfor %}
+          {% if m.contacts.get('telegram') %}<span>Telegram: {{ m.contacts.telegram }}</span>{% endif %}
+          {% if m.email %}<a href="mailto:{{ m.email }}">{{ m.email }}</a>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% if m.about %}<div class="card card-pad"><p class="muted" style="white-space: pre-line">{{ m.about }}</p></div>{% endif %}
+    <div class="card card-pad stack-sm">
+      <h3>Навыки</h3>
+      {% for s in m.skills %}
+      <div class="row small"><span style="flex: 1">{{ s.name }}</span>
+        <span class="row" style="gap: 3px">{% for i in range(5) %}<span class="dot" style="background: {{ 'var(--accent)' if i < s.level else '#e2e1db' }}"></span>{% endfor %}</span></div>
+      {% else %}<p class="small faint">Не указаны.</p>{% endfor %}
+    </div>
+    <div class="card list">
+      <div class="item"><h3>Проекты</h3></div>
+      {% for p, role in projects %}
+      <a class="item" href="/p/{{ p.id }}"><span style="flex: 1">{{ p.title }}</span><span class="tiny faint">{{ role }}</span><span class="chip s-{{ p.status }}">{{ statuses[p.status] }}</span></a>
+      {% else %}<div class="item small faint">Пока нет.</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card card-pad stack-sm">
+      <h3>Активность</h3>
+      <div class="row-wrap small"><span><b class="mono">{{ act.days30 }}</b> дн. из 30</span><span><b class="mono">{{ open_tasks }}</b> открытых задач</span><span><b class="mono">{{ done30 }}</b> закрыто за месяц</span></div>
+      <div class="heat" title="Заходы за 12 недель">{% for c in grid %}<i class="{{ 'l3' if c.hits > 6 else 'l2' if c.hits > 2 else 'l1' if c.hits else '' }}" title="{{ c.day.strftime('%d.%m') }}: {{ c.hits }}"></i>{% endfor %}</div>
+      <p class="tiny faint">{% if m.last_seen %}Последний заход {{ m.last_seen.strftime('%d.%m.%Y %H:%M') }}{% else %}Ещё не заходил{% endif %}</p>
+    </div>
+    {% if own or head %}
+    <details class="card card-pad" {{ 'open' if own and not m.position }}>
+      <summary style="cursor: pointer; font-weight: 600">{{ icon('pen', 15) }} Редактировать профиль</summary>
+      <form method="post" class="stack-sm" style="margin-top: 14px">
+        <label class="field"><span class="label">Должность</span><input class="input" name="position" value="{{ m.position }}" placeholder="Например, бэкенд-разработчик"></label>
+        <label class="field"><span class="label">О себе</span><textarea class="input" name="about" rows="3">{{ m.about }}</textarea></label>
+        <label class="field"><span class="label">Навыки — по строке: «Python — 4» (уровень 1–5)</span>
+          <textarea class="input" name="skills" rows="4">{% for s in m.skills %}{{ s.name }} — {{ s.level }}
+{% endfor %}</textarea></label>
+        <label class="field"><span class="label">Telegram</span><input class="input" name="telegram" value="{{ m.contacts.get('telegram', '') }}"></label>
+        <label class="field"><span class="label">Телефон</span><input class="input" name="phone" value="{{ m.contacts.get('phone', '') }}"></label>
+        <label class="check"><input type="checkbox" name="notify_email" value="1" {{ 'checked' if m.notify_email }}>Присылать письма о задачах и проектах</label>
+        {% if head %}
+        <hr style="border: 0; border-top: 1px solid var(--line); width: 100%">
+        <label class="field"><span class="label">Грейд</span><select class="select" name="grade"><option value="">—</option>{% for g in grades %}<option {{ 'selected' if g == m.grade }}>{{ g }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Направление</span><select class="select" name="direction_id"><option value="">—</option>{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == m.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Группа</span><select class="select" name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if t.id == m.team_id }}>{{ t.title }}</option>{% endfor %}</select></label>
+        {% if not own %}<label class="field"><span class="label">Роль</span><select class="select" name="role">{% for k, v in roles.items() %}<option value="{{ k }}" {{ 'selected' if k == m.role }}>{{ v }}</option>{% endfor %}</select></label>{% endif %}
+        {% endif %}
+        <button class="btn btn-primary" type="submit" style="align-self: flex-start">{{ icon('check', 15) }}Сохранить</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

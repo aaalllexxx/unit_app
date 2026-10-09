@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, dir_icon, progress %}
+{% block title %}Лаборатория UNIT — безопасность, разработка, нейросети{% endblock %}
+{% block body %}
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/"><span class="mark" aria-hidden="true"></span><b>UNIT</b><span class="sub">Лаборатория</span></a>
+    <nav class="nav" style="position: static; background: none; border: 0; padding: 0">
+      <a href="#directions">Направления</a>
+      <a href="#process">Как работаем</a>
+      {% if showcase %}<a href="#projects">Проекты</a>{% endif %}
+    </nav>
+    <div class="who">
+      {% if me %}<a class="btn btn-primary btn-sm" href="/home">Открыть портал</a>
+      {% else %}<a class="btn btn-ghost btn-sm" href="/login">Войти</a>{% endif %}
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="eyebrow"><span class="dot"></span>IT-лаборатория UNIT</span>
+    <h1>Безопасность, разработка и нейросети — одной командой</h1>
+    <p class="lead">Проверяем защищённость систем, пишем сервисы и приложения, обучаем и внедряем модели.
+      Ведём проект от постановки задачи до релиза и показываем, на каком этапе работа.</p>
+    <div class="row-wrap" style="margin-top: 30px">
+      <a class="btn btn-primary btn-lg" href="#contact">Обсудить задачу {{ icon('arrow', 17) }}</a>
+      <a class="btn btn-ghost btn-lg" href="/login">Вход для команды и заказчиков</a>
+    </div>
+  </section>
+
+  <section class="section" id="directions">
+    <div class="wrap">
+      <div class="head"><h2>Направления</h2>
+        <p class="spacer">Три группы инженеров, которые часто работают над одним проектом вместе.</p></div>
+      <div class="grid g3">
+        {% for d in directions %}
+        <div class="card dir">
+          <span class="badge t-{{ d.tone }}">{{ dir_icon(d) }}</span>
+          <h3>{{ d.title }}</h3>
+          <p class="muted small">{{ d.about }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="process">
+    <div class="wrap">
+      <div class="head"><h2>Как идёт работа</h2>
+        <p class="spacer">Проект делим на части. По каждой видно, на каком она этапе и сколько готово.</p></div>
+      <div class="card steps">
+        <div><span class="n">01</span><b>Планирование</b><span class="small muted">Разбираемся в задаче, делим её на части, договариваемся о сроках и результате.</span></div>
+        <div><span class="n">02</span><b>Реализация</b><span class="small muted">Пишем код, проводим исследования, показываем промежуточные версии.</span></div>
+        <div><span class="n">03</span><b>Тестирование</b><span class="small muted">Проверяем работу и безопасность до того, как продукт увидят пользователи.</span></div>
+        <div><span class="n">04</span><b>Релиз</b><span class="small muted">Запускаем, передаём документацию и остаёмся на связи после запуска.</span></div>
+      </div>
+    </div>
+  </section>
+
+  {% if showcase %}
+  <section class="section showcase" id="projects">
+    <div class="wrap">
+      <div class="head"><h2>Проекты</h2><p class="spacer">Часть работ, о которых можно рассказать.</p></div>
+      <div class="grid g2">
+        {% for item in showcase %}{% set p = item.p %}
+        <div class="card">
+          <div class="row-wrap">
+            {% if item.direction %}<span class="chip t-{{ item.direction.tone }}">{{ item.direction.title }}</span>{% endif %}
+            <span class="chip s-{{ p.status }}">{{ statuses[p.status] }}</span>
+          </div>
+          <h3>{{ p.public_title or p.title }}</h3>
+          <p class="muted small">{{ p.public_text or p.summary }}</p>
+          {% if p.status != 'done' %}
+          <div class="stack-sm" style="gap: 6px"><div class="row tiny faint">Готовность<span class="spacer mono">{{ item.percent }}%</span></div>{{ progress(item.percent) }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="section" id="contact">
+    <div class="wrap">
+      <div class="card card-pad row-wrap" style="gap: 24px; padding: 32px">
+        <div class="stack-sm" style="flex: 1; min-width: 260px">
+          <h2>Есть задача?</h2>
+          <p class="muted">Опишите, что нужно сделать, и в какие сроки. Ответим в течение рабочего дня и предложим, как разбить работу на этапы.</p>
+        </div>
+        {% if config.get('LAB_CONTACT') %}
+        <a class="btn btn-accent btn-lg" href="mailto:{{ config['LAB_CONTACT'] }}">{{ icon('mail', 17) }}{{ config['LAB_CONTACT'] }}</a>
+        {% else %}
+        <a class="btn btn-accent btn-lg" href="/login">{{ icon('arrow', 17) }}Войти и оставить заявку</a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="foot">
+  <div class="wrap row-wrap"><span>Лаборатория UNIT</span><span class="spacer">Вход — через аккаунт UNIT ID</span></div>
+</footer>
+{% endblock %}
