@@ -25,7 +25,7 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, flash, g, redirect, render_template, request, session, url_for
 from sqlalchemy import func, select
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -285,8 +285,9 @@ def callback():
 
 @app.route("/logout")
 def logout():
+    """Выход и из портала, и из UNIT ID — иначе «Войти» сразу пустит обратно без пароля."""
     session.clear()
-    return redirect("/")
+    return redirect(f"{ISSUER}/logout?" + urllib.parse.urlencode({"next": SITE + "/"}))
 
 
 # ─── Лендинг ────────────────────────────────────────────────────────────────
@@ -715,6 +716,37 @@ def missing(_e):
     return render_template("message.html", title="Страница не найдена", text="Возможно, её удалили или у вас нет доступа."), 404
 
 
+# ─── Установка как приложения (PWA) ─────────────────────────────────────────
+MANIFEST = {
+    "name": "Лаборатория UNIT", "short_name": "Лаборатория", "description": "Проекты, люди и учёт времени IT-лаборатории UNIT",
+    "lang": "ru", "start_url": "/home", "scope": "/", "display": "standalone",
+    "background_color": "#f3f4f7", "theme_color": "#f3f4f7",
+    "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+              {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+              {"src": "/static/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}],
+}
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    response = Response(json.dumps(MANIFEST, ensure_ascii=False), mimetype="application/manifest+json")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.get("/sw.js")
+def service_worker():
+    response = app.send_static_file("sw.js")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
+
+
+@app.get("/offline")
+def offline():
+    return render_template("offline.html")
+
+
 @app.route("/healthz")
 def healthz():
     db().scalar(select(func.count()).select_from(M.Direction))
@@ -723,4 +755,7 @@ def healthz():
 
 @app.context_processor
 def common():
-    return {"me": getattr(g, "me", None), "roles": M.ROLES, "statuses": M.STATUSES, "today": date.today()}
+    me_ = getattr(g, "me", None)
+    nav_dirs = db().scalars(select(M.Direction).order_by(M.Direction.id)).all() if me_ and me_.role not in ("pending", "customer") else []
+    return {"me": me_, "roles": M.ROLES, "statuses": M.STATUSES, "today": date.today(), "nav_dirs": nav_dirs,
+            "issuer": ISSUER}

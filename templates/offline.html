@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Нет связи — Лаборатория UNIT{% endblock %}
+{% block body %}
+<div class="solo" style="grid-template-columns: minmax(0, 1fr)">
+  <div class="solo-main">
+    <a class="logo" href="/">{{ logo('Лаборатория') }}</a>
+    <div class="body"><div class="solo-card">
+      <span class="label-mono">Нет связи</span>
+      <h1>Интернет пропал</h1>
+      <p class="sub">Как только связь вернётся, страница откроется. Данные не потеряются — всё сохранено на сервере.</p>
+      <a class="btn btn-primary btn-lg" href="">Попробовать ещё раз</a>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

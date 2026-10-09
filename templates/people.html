@@ -2,23 +2,32 @@
 {% from '_icons.html' import icon, dir_icon, initials %}
 {% block title %}Люди — Лаборатория UNIT{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Люди</h1><p>Сотрудники лаборатории по направлениям и группам.</p></div></div>
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Люди · {{ rows|length }}</span>
+    <h1>Люди</h1>
+    <p class="sub">Сотрудники лаборатории: направление, группа, должность и как часто заходят.</p>
+  </div>
+</div>
 <div class="tabs">
   <a href="/people" class="{{ 'on' if not active }}">Все</a>
-  {% for d in dirs.values() %}<a href="/people?d={{ d.id }}" class="{{ 'on' if active == d.id|string }}">{{ d.title }}</a>{% endfor %}
-  {% for d in dirs.values() %}<a href="/d/{{ d.slug }}" class="spacer faint" style="font-weight: 500" title="Страница направления">{{ dir_icon(d) }}</a>{% endfor %}
+  {% for d in dirs.values() %}<a href="/people?d={{ d.id }}" class="{{ 'on' if active == d.id|string }}">{{ dir_icon(d, 15) }}{{ d.title }}</a>{% endfor %}
 </div>
-<div class="card list">
-  {% for m in rows %}{% set d = dirs.get(m.direction_id) %}
-  <a class="item" href="/people/{{ m.id }}">
-    <span class="avatar">{{ initials(m.name) }}</span>
-    <div style="flex: 1; min-width: 0">
-      <div><b style="font-weight: 600">{{ m.name }}</b>{% if m.grade %} <span class="tiny faint">· {{ m.grade }}</span>{% endif %}</div>
-      <div class="tiny faint">{{ m.position or roles[m.role] }}{% if d %} · {{ d.title }}{% endif %}{% if teams.get(m.team_id) %} · {{ teams[m.team_id].title }}{% endif %}</div>
-    </div>
-    <span class="tiny faint" title="Дней с заходами за 30 дней">{{ acts[m.id].days30 }} дн. из 30</span>
-    <span class="tiny faint" style="min-width: 110px; text-align: right">{% if m.last_seen %}был {{ m.last_seen.strftime('%d.%m %H:%M') }}{% else %}не заходил{% endif %}</span>
-  </a>
-  {% else %}<div class="empty">Пока никого нет.</div>{% endfor %}
+<div class="panel scroll-x">
+  <table class="table">
+    <thead><tr><th>Сотрудник</th><th class="hide-sm">Направление и группа</th><th>Грейд</th><th class="num hide-sm">Дней из 30</th><th class="num">Последний заход</th></tr></thead>
+    <tbody>
+    {% for m in rows %}{% set d = dirs.get(m.direction_id) %}
+    <tr>
+      <td><a class="row" href="/people/{{ m.id }}"><span class="avatar">{{ initials(m.name) }}</span>
+        <span class="stack-xs" style="gap: 0"><b class="small strong">{{ m.name }}</b><span class="tiny faint">{{ m.position or roles[m.role] }}</span></span></a></td>
+      <td class="hide-sm">{% if d %}<span class="chip tone t-{{ d.tone }}">{{ d.title }}</span>{% endif %}{% if teams.get(m.team_id) %} <span class="tiny faint">{{ teams[m.team_id].title }}</span>{% endif %}{% if not d and not teams.get(m.team_id) %}<span class="faint">—</span>{% endif %}</td>
+      <td class="small">{{ m.grade or '—' }}</td>
+      <td class="num hide-sm">{{ acts[m.id].days30 }}</td>
+      <td class="num tiny faint">{% if m.last_seen %}{{ m.last_seen.strftime('%d.%m %H:%M') }}{% else %}не заходил{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="empty">Пока никого нет.</td></tr>{% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}

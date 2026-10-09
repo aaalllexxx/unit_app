@@ -3,11 +3,15 @@
 {% block title %}Проекты — Лаборатория UNIT{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Проекты</h1><p>Все проекты, которые вам видны, с готовностью по этапам.</p></div>
+  <div class="titles">
+    <span class="eyebrow">Проекты · {{ rows|length }}</span>
+    <h1>Проекты</h1>
+    <p class="sub">Все проекты, которые вам видны, с готовностью по этапам.</p>
+  </div>
   {% if me.role in ('head', 'lead') %}
-  <form method="post" action="/projects" class="row spacer">
-    <input class="input" name="title" placeholder="Название нового проекта" required style="width: 260px">
-    <label class="check tiny"><input type="checkbox" name="closed" value="1">Закрытый</label>
+  <form method="post" action="/projects" class="actions">
+    <input class="input" name="title" placeholder="Название нового проекта" required style="width: 250px">
+    <label class="check small"><input type="checkbox" name="closed" value="1">Закрытый</label>
     <button class="btn btn-primary" type="submit">{{ icon('plus', 16) }}Создать</button>
   </form>
   {% endif %}
@@ -18,20 +22,21 @@
 </div>
 <div class="grid g2">
   {% for p in rows %}{% set i = info[p.id] %}{% set d = dirs.get(p.direction_id) %}
-  <a class="card card-pad stack-sm" href="/p/{{ p.id }}" style="text-decoration: none">
-    <div class="row-wrap">
-      {% if d %}<span class="chip t-{{ d.tone }}">{{ d.title }}</span>{% endif %}
-      <span class="chip s-{{ p.status }}">{{ statuses[p.status] }}</span>
-      {% if p.closed %}<span class="chip">{{ icon('lock', 13) }}Закрытый</span>{% endif %}
-      {% if p.public %}<span class="chip">{{ icon('eye', 13) }}На лендинге</span>{% endif %}
-      <span class="pct mono spacer">{{ i.percent }}%</span>
+  <a class="panel proj" href="/p/{{ p.id }}">
+    <div class="top">
+      {% if d %}<span class="chip tone t-{{ d.tone }}">{{ d.title }}</span>{% endif %}
+      <span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span>
+      {% if p.closed %}<span class="chip">{{ icon('lock', 12) }}Закрытый</span>{% endif %}
+      {% if p.public %}<span class="chip" title="Показывается на лендинге">{{ icon('eye', 12) }}Публичный</span>{% endif %}
     </div>
-    <h3>{{ p.title }}</h3>
-    {% if p.summary %}<p class="small muted">{{ p.summary }}</p>{% endif %}
-    {{ progress(i.percent) }}
+    <div class="stack-xs"><h3>{{ p.title }}</h3>{% if p.summary %}<p class="small muted">{{ p.summary }}</p>{% endif %}</div>
+    <div class="bar">{{ progress(i.percent) }}<span class="pct">{{ i.percent }}<small>%</small></span></div>
     {% if i.phases[0].total %}{{ phases(i.phases) }}{% endif %}
-    <div class="row tiny faint">{% if i.lead %}Руководитель: {{ i.lead.name }}{% endif %}{% if p.due %}<span class="spacer {{ 'late' if p.due < today and i.percent < 100 }}">{{ icon('calendar', 13) }} до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}</div>
+    <div class="meta">
+      {% if i.lead %}<span>{{ icon('user', 13) }}{{ i.lead.name }}</span>{% endif %}
+      {% if p.due %}<span class="{{ 'late' if p.due < today and i.percent < 100 }}">{{ icon('calendar', 13) }}до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}
+    </div>
   </a>
-  {% else %}<div class="card empty">Проектов пока нет.</div>{% endfor %}
+  {% else %}<div class="panel empty" style="grid-column: 1 / -1">Проектов пока нет.</div>{% endfor %}
 </div>
 {% endblock %}

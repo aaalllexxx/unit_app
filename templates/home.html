@@ -3,58 +3,66 @@
 {% block title %}Главная — Лаборатория UNIT{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Добрый день, {{ me.name.split()[0] }}</h1>
-    <p>{% if me.role == 'customer' %}Здесь ваши проекты и то, на каком они этапе.{% else %}Ваши проекты, задачи и часы за неделю.{% endif %}</p></div>
+  <div class="titles">
+    <span class="eyebrow">{{ today.strftime('%d.%m.%Y') }}</span>
+    <h1>Добрый день, {{ me.name.split()[0] }}</h1>
+    <p class="sub">{% if me.role == 'customer' %}Ваши проекты и этап, на котором сейчас работа.{% else %}Ваши проекты, задачи и часы за неделю.{% endif %}</p>
+  </div>
   {% if me.role in ('head', 'lead') %}
-  <form method="post" action="/projects" class="row spacer">
+  <form method="post" action="/projects" class="actions">
     <input class="input" name="title" placeholder="Название нового проекта" required style="width: 260px">
-    <button class="btn btn-primary" type="submit">{{ icon('plus', 16) }}Создать</button>
+    <button class="btn btn-primary" type="submit">{{ icon('plus', 16) }}Новый проект</button>
   </form>
   {% endif %}
 </div>
 
-<div class="grid" style="grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); align-items: start">
-  <div class="stack">
-    <h2>Проекты</h2>
-    {% for c in cards %}{% set p = c.p %}
-    <a class="card card-pad stack-sm" href="/p/{{ p.id }}" style="text-decoration: none">
-      <div class="row-wrap">
-        <h3 style="flex: 1">{{ p.title }}</h3>
-        {% if p.closed %}<span class="chip">{{ icon('lock', 13) }}Закрытый</span>{% endif %}
-        <span class="chip s-{{ p.status }}">{{ statuses[p.status] }}</span>
-        <span class="pct mono">{{ c.percent }}%</span>
-      </div>
-      {% if p.summary %}<p class="small muted">{{ p.summary }}</p>{% endif %}
-      {{ progress(c.percent) }}
-      {% if c.phases[0].total %}{{ phases(c.phases) }}{% endif %}
-    </a>
-    {% else %}
-    <div class="card empty">Пока вы не участвуете ни в одном проекте.</div>
-    {% endfor %}
+{% if me.role != 'customer' %}
+<div class="stats">
+  <div class="stat"><span class="label-mono">Проекты</span><span class="value">{{ cards|length }}</span><span class="note">в которых вы участвуете</span></div>
+  <div class="stat"><span class="label-mono">Задачи</span><span class="value">{{ tasks|length }}</span><span class="note">открыто на вас</span></div>
+  <a class="stat" href="/time"><span class="label-mono">Часы</span><span class="value">{{ '%g' % hours }}<small> ч</small></span><span class="note">записано на этой неделе</span></a>
+  <div class="stat"><span class="label-mono">В сети</span>
+    {% if online %}<div class="avatars" style="margin-top: 2px">{% for m in online[:6] %}<a class="avatar sm" href="/people/{{ m.id }}" title="{{ m.name }}">{{ initials(m.name) }}</a>{% endfor %}</div>
+    {% else %}<span class="value">0</span>{% endif %}
+    <span class="note">за последние 15 минут</span></div>
+</div>
+{% endif %}
+
+<div class="grid split">
+  <div>
+    <div class="section-title"><h2>Проекты</h2><a class="spacer small muted row" style="gap: 6px" href="/projects">Все проекты {{ icon('arrow', 14) }}</a></div>
+    <div class="grid">
+      {% for c in cards %}{% set p = c.p %}
+      <a class="panel proj" href="/p/{{ p.id }}">
+        <div class="top">
+          <span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span>
+          {% if p.closed %}<span class="chip">{{ icon('lock', 12) }}Закрытый</span>{% endif %}
+          {% if p.due %}<span class="tiny faint spacer {{ 'late' if p.due < today and c.percent < 100 }}">до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}
+        </div>
+        <div class="stack-xs"><h3>{{ p.title }}</h3>{% if p.summary %}<p class="small muted">{{ p.summary }}</p>{% endif %}</div>
+        <div class="bar">{{ progress(c.percent) }}<span class="pct">{{ c.percent }}<small>%</small></span></div>
+        {% if c.phases[0].total %}{{ phases(c.phases) }}{% endif %}
+      </a>
+      {% else %}
+      <div class="panel empty">Пока вы не участвуете ни в одном проекте.</div>
+      {% endfor %}
+    </div>
   </div>
 
   {% if me.role != 'customer' %}
-  <div class="stack">
-    <div class="card card-pad stack-sm">
-      <div class="row"><h3>Мои задачи</h3><span class="chip spacer">{{ tasks|length }}</span></div>
-      {% for t in tasks[:10] %}
-      <a href="/p/{{ t.project_id }}#tasks" class="stack-sm" style="gap: 2px; text-decoration: none; padding: 8px 0; border-top: 1px solid var(--line)">
-        <span class="small">{{ t.title }}</span>
-        <span class="tiny faint">{{ names.get(t.project_id, '') }} · {{ columns[t.column] }}{% if t.due %} · <span class="{{ 'late' if t.due < today }}">до {{ t.due.strftime('%d.%m') }}</span>{% endif %}</span>
+  <div>
+    <div class="section-title"><h2>Мои задачи</h2><span class="count-badge">{{ tasks|length }}</span></div>
+    <div class="panel rows">
+      {% for t in tasks[:12] %}
+      <a class="r" href="/p/{{ t.project_id }}#tasks">
+        <div class="grow stack-xs">
+          <span class="small strong truncate">{{ t.title }}</span>
+          <span class="tiny faint">{{ names.get(t.project_id, '') }} · {{ columns[t.column] }}</span>
+        </div>
+        {% if t.due %}<span class="tiny mono {{ 'late' if t.due < today else 'faint' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}
       </a>
-      {% else %}<p class="small faint">Открытых задач нет.</p>{% endfor %}
+      {% else %}<div class="empty">Открытых задач нет.</div>{% endfor %}
     </div>
-    <a class="card card-pad row" href="/time" style="text-decoration: none">
-      <span class="avatar" style="border-radius: 10px">{{ icon('clock', 18) }}</span>
-      <div><div class="pct mono">{{ '%g' % hours }} ч</div><div class="tiny faint">записано на этой неделе</div></div>
-      <span class="spacer faint">{{ icon('arrow', 16) }}</span>
-    </a>
-    {% if online %}
-    <div class="card card-pad stack-sm">
-      <h3>Сейчас в сети</h3>
-      <div class="row-wrap" style="gap: 6px">{% for m in online %}<a class="avatar" href="/people/{{ m.id }}" title="{{ m.name }}">{{ initials(m.name) }}</a>{% endfor %}</div>
-    </div>
-    {% endif %}
   </div>
   {% endif %}
 </div>

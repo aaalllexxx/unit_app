@@ -3,43 +3,65 @@
 {% block title %}{{ d.title }} — Лаборатория UNIT{% endblock %}
 {% block content %}
 <div class="page-head">
-  <span class="dir" style="padding: 0"><span class="badge t-{{ d.tone }}" style="width: 48px; height: 48px">{{ dir_icon(d) }}</span></span>
-  <div><h1>{{ d.title }}</h1><p>{{ d.about }}</p></div>
+  <span class="badge t-{{ d.tone }}" style="width: 52px; height: 52px; border-radius: 14px">{{ dir_icon(d, 24) }}</span>
+  <div class="titles">
+    <span class="eyebrow">Направление</span>
+    <h1>{{ d.title }}</h1>
+    {% if d.about %}<p class="sub">{{ d.about }}</p>{% endif %}
+  </div>
 </div>
-<div class="grid" style="grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); align-items: start">
+<div class="grid split">
   <div class="stack">
-    <div class="card list">
-      <div class="item"><h3>Проекты направления</h3></div>
-      {% for p in projects %}
-      <a class="item" href="/p/{{ p.id }}"><span style="flex: 1">{{ p.title }}</span><span class="chip s-{{ p.status }}">{{ statuses[p.status] }}</span>
-        <span style="width: 120px">{{ progress(percents[p.id]) }}</span><span class="mono small" style="width: 42px; text-align: right">{{ percents[p.id] }}%</span></a>
-      {% else %}<div class="item small faint">Проектов пока нет.</div>{% endfor %}
+    <div class="panel">
+      <div class="panel-head"><h3>Проекты направления</h3><span class="count-badge spacer">{{ projects|length }}</span></div>
+      <div class="rows">
+        {% for p in projects %}
+        <a class="r" href="/p/{{ p.id }}">
+          <span class="grow small strong truncate">{{ p.title }}</span>
+          <span class="chip tone s-{{ p.status }} hide-sm"><span class="dot"></span>{{ statuses[p.status] }}</span>
+          <span style="width: 120px">{{ progress(percents[p.id]) }}</span><span class="mono small right" style="width: 42px">{{ percents[p.id] }}%</span>
+        </a>
+        {% else %}<div class="empty">Проектов пока нет.</div>{% endfor %}
+      </div>
     </div>
-    <div class="card list">
-      <div class="item"><h3>Сотрудники</h3><span class="chip spacer">{{ members|length }}</span></div>
-      {% for m in members %}
-      <a class="item" href="/people/{{ m.id }}"><span class="avatar">{{ initials(m.name) }}</span><span style="flex: 1">{{ m.name }}</span>
-        <span class="tiny faint">{{ m.position }}{% if m.grade %} · {{ m.grade }}{% endif %}</span></a>
-      {% else %}<div class="item small faint">Пока никого.</div>{% endfor %}
+    <div class="panel">
+      <div class="panel-head"><h3>Сотрудники</h3><span class="count-badge spacer">{{ members|length }}</span></div>
+      <div class="rows">
+        {% for m in members %}
+        <a class="r" href="/people/{{ m.id }}"><span class="avatar">{{ initials(m.name) }}</span>
+          <span class="grow stack-xs" style="gap: 0"><b class="small strong">{{ m.name }}</b><span class="tiny faint">{{ m.position or roles[m.role] }}</span></span>
+          {% if m.grade %}<span class="chip">{{ m.grade }}</span>{% endif %}</a>
+        {% else %}<div class="empty">Пока никого.</div>{% endfor %}
+      </div>
     </div>
   </div>
   <div class="stack">
-    <div class="card card-pad stack-sm">
-      <h3>Руководитель</h3>
-      {% if lead %}<a class="row" href="/people/{{ lead.id }}" style="text-decoration: none"><span class="avatar">{{ initials(lead.name) }}</span>{{ lead.name }}</a>{% else %}<p class="small faint">Не назначен.</p>{% endif %}
-      <h3 style="margin-top: 10px">Группы</h3>
-      {% for t in teams %}<span class="chip" style="align-self: flex-start">{{ t.title }}</span>{% else %}<p class="small faint">Групп пока нет.</p>{% endfor %}
+    <div class="panel">
+      <div class="panel-head"><h3>Руководитель</h3></div>
+      <div class="panel-body">
+        {% if lead %}<a class="row" href="/people/{{ lead.id }}"><span class="avatar">{{ initials(lead.name) }}</span><span class="small strong">{{ lead.name }}</span></a>
+        {% else %}<p class="small faint">Не назначен.</p>{% endif %}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Группы</h3><span class="count-badge spacer">{{ teams|length }}</span></div>
+      <div class="panel-body row-wrap">
+        {% for t in teams %}<span class="chip">{{ t.title }}</span>{% else %}<p class="small faint">Групп пока нет.</p>{% endfor %}
+      </div>
+      {% if me.role == 'head' %}
+      <form method="post" class="panel-foot form-row">
+        <input class="input input-sm" name="team" placeholder="Новая группа" required>
+        <button class="btn btn-ghost btn-sm" type="submit">{{ icon('plus', 14) }}Добавить</button>
+      </form>
+      {% endif %}
     </div>
     {% if me.role == 'head' %}
-    <details class="card card-pad">
-      <summary style="cursor: pointer; font-weight: 600">{{ icon('pen', 15) }} Настроить направление</summary>
-      <form method="post" class="stack-sm" style="margin-top: 12px">
-        <label class="field"><span class="label">Описание</span><textarea class="input" name="about" rows="3">{{ d.about }}</textarea></label>
+    <details class="panel">
+      <summary class="panel-head"><h3>Настроить направление</h3><span class="spacer faint">{{ icon('down', 16) }}</span></summary>
+      <form method="post" class="panel-body stack-sm">
+        <label class="field"><span class="label">Описание</span><textarea class="textarea" name="about" rows="3">{{ d.about }}</textarea></label>
         <label class="field"><span class="label">Руководитель</span><select class="select" name="lead_id"><option value="">—</option>{% for m in staff %}<option value="{{ m.id }}" {{ 'selected' if m.id == d.lead_id }}>{{ m.name }}</option>{% endfor %}</select></label>
-        <button class="btn btn-primary btn-sm" type="submit" style="align-self: flex-start">Сохранить</button>
-      </form>
-      <form method="post" class="row" style="margin-top: 12px">
-        <input class="input" name="team" placeholder="Новая группа" required><button class="btn btn-ghost btn-sm" type="submit">{{ icon('plus', 14) }}</button>
+        <div><button class="btn btn-primary btn-sm" type="submit">Сохранить</button></div>
       </form>
     </details>
     {% endif %}

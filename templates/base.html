@@ -1,46 +1,67 @@
-{% from '_icons.html' import icon, sprite, initials %}
+{% from '_icons.html' import icon, sprite, initials, dir_icon, dir_short, flashes, logo %}
 <!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Лаборатория UNIT{% endblock %}</title>
-  <meta name="theme-color" content="#f6f6f3">
+  <meta name="theme-color" content="#f3f4f7">
+  {% block meta %}{% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/lab.css?v=1">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/unit.css?v=3">
   <link rel="icon" href="/static/logo.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Лаборатория">
+  <script src="/static/unit.js?v=2" defer></script>
 </head>
 <body>
 {{ sprite() }}
 {% block body %}
-<header class="top">
-  <div class="wrap">
-    <a class="logo" href="/home"><span class="mark" aria-hidden="true"></span><b>UNIT</b><span class="sub">Лаборатория</span></a>
+{% set here = request.path %}
+<div class="shell">
+  <aside class="side">
+    <a class="logo" href="{{ '/home' if me else '/' }}">{{ logo('Лаборатория') }}</a>
     {% if me and me.role != 'pending' %}
-    {% set here = request.path %}
-    <nav class="nav">
-      <a href="/home" class="{{ 'on' if here == '/home' }}">{{ icon('home', 16) }}Главная</a>
-      <a href="/projects" class="{{ 'on' if here.startswith('/p') }}">{{ icon('folder', 16) }}Проекты</a>
+    <nav aria-label="Разделы">
+      <span class="side-label label-mono">Работа</span>
+      <a class="side-link {{ 'on' if here == '/home' }}" href="/home">{{ icon('home', 18) }}Главная</a>
+      <a class="side-link {{ 'on' if here.startswith('/p') }}" href="/projects">{{ icon('folder', 18) }}Проекты</a>
       {% if me.role != 'customer' %}
-      <a href="/people" class="{{ 'on' if here.startswith('/people') or here.startswith('/d/') }}">{{ icon('users', 16) }}Люди</a>
-      <a href="/time" class="{{ 'on' if here == '/time' }}">{{ icon('clock', 16) }}Время</a>
+      <a class="side-link {{ 'on' if here == '/time' }}" href="/time">{{ icon('clock', 18) }}Учёт времени</a>
+      <span class="side-label label-mono">Лаборатория</span>
+      <a class="side-link {{ 'on' if here.startswith('/people') }}" href="/people">{{ icon('users', 18) }}Люди</a>
+      {% for d in nav_dirs %}
+      <a class="side-link {{ 'on' if here == '/d/' ~ d.slug }}" href="/d/{{ d.slug }}">{{ dir_icon(d, 18) }}{{ dir_short(d) }}</a>
+      {% endfor %}
       {% endif %}
-      {% if me.role == 'head' %}<a href="/admin" class="{{ 'on' if here == '/admin' }}">{{ icon('chart', 16) }}Обзор</a>{% endif %}
+      {% if me.role == 'head' %}
+      <span class="side-label label-mono">Управление</span>
+      <a class="side-link {{ 'on' if here == '/admin' }}" href="/admin">{{ icon('chart', 18) }}Обзор и доступы</a>
+      {% endif %}
     </nav>
-    {% endif %}
+    {% else %}<nav></nav>{% endif %}
     {% if me %}
-    <div class="who">
-      <a class="avatar" href="{{ '/people/' ~ me.id if me.role not in ('customer', 'pending') else '#' }}" title="{{ me.name }}">{{ initials(me.name) }}</a>
-      <a class="btn btn-quiet btn-sm" href="/logout" title="Выйти" aria-label="Выйти">{{ icon('logout', 16) }}</a>
+    <div class="side-foot">
+      <div class="user-card">
+        <a class="avatar" href="{{ '/people/' ~ me.id if me.role not in ('customer', 'pending') else issuer ~ '/apps' }}" title="Профиль">{{ initials(me.name) }}</a>
+        <div class="who"><b>{{ me.name }}</b><span>{{ roles[me.role] }}</span></div>
+        <a class="btn btn-quiet btn-icon btn-sm" href="/logout" title="Выйти" aria-label="Выйти">{{ icon('logout', 17) }}</a>
+      </div>
     </div>
     {% endif %}
-  </div>
-</header>
-<main class="page wrap">
-  {% with messages = get_flashed_messages(with_categories=true) %}{% for c, m in messages %}<div class="flash {{ c }}" style="margin-bottom: 16px">{{ m }}</div>{% endfor %}{% endwith %}
-  {% block content %}{% endblock %}
-</main>
+  </aside>
+  <main class="main">
+    <div class="view">
+      {{ flashes() }}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
 {% endblock %}
 </body>
 </html>

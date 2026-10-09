@@ -25,15 +25,27 @@
     <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
     <symbol id="i-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c.8-3.8 3.9-6 7.5-6s6.7 2.2 7.5 6"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
   </defs>
 </svg>
 {% endmacro %}
-{% macro dir_icon(d) %}{{ icon('shield' if d.slug == 'security' else 'cpu' if d.slug == 'ml' else 'code', 20) }}{% endmacro %}
+{% macro dir_icon(d, size=20) %}{{ icon('shield' if d.slug == 'security' else 'cpu' if d.slug == 'ml' else 'code', size) }}{% endmacro %}
 {% macro initials(name) %}{% set p = (name or '?').split() %}{{ p[0][0] }}{{ p[1][0] if p|length > 1 else '' }}{% endmacro %}
 {% macro progress(pct) %}<div class="progress" role="progressbar" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100"><i style="width: {{ pct }}%"></i></div>{% endmacro %}
-{% macro phases(rows) %}
+{% macro phases(rows) %}{% set short = {'Планирование': 'План', 'Тестирование': 'Тесты'} %}
 <div class="phases">{% for ph in rows %}
   {% set w = ((ph.passed / ph.total * 100) | round | int) if ph.total else 0 %}
-  <div class="phase {{ 'passed' if ph.total and ph.passed == ph.total }} {{ 'cur' if ph.current }}"><span class="seg"><i style="width: {{ w }}%"></i></span>{{ ph.name }}</div>
+  <div class="phase {{ 'passed' if ph.total and ph.passed == ph.total }} {{ 'cur' if ph.current }}"><span class="seg"><i style="width: {{ w }}%"></i></span><span class="n" title="{{ ph.name }}">{{ short.get(ph.name, ph.name) }}</span></div>
 {% endfor %}</div>
 {% endmacro %}
+{% macro flashes() %}{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flashes">{% for c, m in messages %}<div class="flash {{ c }}">{{ m }}</div>{% endfor %}</div>{% endif %}{% endwith %}{% endmacro %}
+{% macro dir_short(d) %}{{ {'security': 'Безопасность', 'dev': 'Разработка ПО', 'ml': 'Нейросети'}.get(d.slug, d.title) }}{% endmacro %}
+{% macro logo(sub) %}<span class="mark" aria-hidden="true"></span><span class="word"><b>UNIT</b><small>{{ sub }}</small></span>{% endmacro %}
