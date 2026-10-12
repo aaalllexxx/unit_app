@@ -1,42 +1,78 @@
 {% extends 'base.html' %}
 {% from '_icons.html' import icon %}
 {% block title %}Учёт времени — Лаборатория UNIT{% endblock %}
+{% block apptitle %}Время{% endblock %}
 {% block content %}
+{% set total = entries|sum(attribute='hours') %}
 <div class="page-head">
   <div class="titles">
     <span class="eyebrow">Неделя {{ start.strftime('%d.%m') }} — {{ days[-1].strftime('%d.%m.%Y') }}</span>
     <h1>Учёт времени</h1>
-    <p class="sub">Сколько часов и на какие проекты ушло за неделю.</p>
+    <p class="sub">Запустите таймер на задаче — часы запишутся сами. Или добавьте вручную.</p>
   </div>
-  <div class="actions">
+  <div class="actions" style="flex-wrap: nowrap">
     <a class="btn btn-ghost btn-icon" href="/time?week={{ prev }}" title="Прошлая неделя" aria-label="Прошлая неделя">{{ icon('back', 16) }}</a>
+    {% if start != this_week %}<a class="btn btn-ghost" href="/time">Эта неделя</a>{% endif %}
     <a class="btn btn-ghost btn-icon" href="/time?week={{ next }}" title="Следующая неделя" aria-label="Следующая неделя">{{ icon('arrow', 16) }}</a>
   </div>
 </div>
 
-<form method="post" action="/time?week={{ start }}" class="panel" style="margin-bottom: 22px">
-  <div class="panel-head"><h3>Записать часы</h3></div>
-  <div class="panel-body form-grid time-grid">
-    <label class="field"><span class="label">Проект</span><select class="select" name="project_id" required>{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select></label>
-    <label class="field"><span class="label">Задача</span><select class="select" name="task_id"><option value="">—</option>{% for t in tasks %}<option value="{{ t.id }}">{{ t.title[:60] }}</option>{% endfor %}</select></label>
-    <label class="field"><span class="label">День</span><input class="input" type="date" name="day" value="{{ today }}"></label>
-    <label class="field"><span class="label">Часы</span><input class="input mono" name="hours" placeholder="1,5" required inputmode="decimal"></label>
-    <label class="field full"><span class="label">Что делали</span><input class="input" name="note" placeholder="Коротко"></label>
+<div class="grid split" style="margin-bottom: 18px">
+  <div class="panel">
+    <div class="panel-head"><h3>Неделя</h3><span class="pct spacer" style="font-size: 20px">{{ '%g' % total }}<small> ч</small></span></div>
+    <div class="panel-body">
+      <div class="week-bars" style="height: 120px">{% for d in days %}{% set h = per_day[d] %}
+        <div class="{{ 'is-today' if d == today }}" title="{{ d.strftime('%d.%m') }}: {{ '%g' % h }} ч"><span class="mono" style="color: var(--ink-2)">{{ '%g' % h if h else '' }}</span><i class="{{ 'on' if h }}" style="height: {{ (h / top * 100)|round|int }}%"></i><span>{{ ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'][loop.index0] }} {{ d.day }}</span></div>
+      {% endfor %}</div>
+    </div>
   </div>
-  <div class="panel-foot"><button class="btn btn-primary" type="submit">{{ icon('plus', 15) }}Записать</button></div>
-</form>
-
-<div class="panel scroll-x">
-  <table class="table">
-    <thead><tr><th>День</th><th>Проект</th><th class="hide-sm">Что делали</th><th class="num">Часы</th><th style="width: 52px"></th></tr></thead>
-    <tbody>
-    {% for e in entries %}
-    <tr><td class="mono small">{{ e.day.strftime('%d.%m') }}</td><td class="small strong">{{ names.get(e.project_id, '—') }}</td><td class="muted small hide-sm">{{ e.note }}</td>
-      <td class="num">{{ '%g' % e.hours }}</td>
-      <td><form method="post" action="/time?week={{ start }}"><button class="btn btn-quiet btn-icon btn-sm" name="delete" value="{{ e.id }}" type="submit" title="Удалить" aria-label="Удалить">{{ icon('trash', 14) }}</button></form></td></tr>
-    {% else %}<tr><td colspan="5" class="empty">За эту неделю записей нет.</td></tr>{% endfor %}
-    </tbody>
-    {% if entries %}<tfoot><tr><td colspan="3">Итого за неделю</td><td class="num">{{ '%g' % (entries|sum(attribute='hours')) }}</td><td></td></tr></tfoot>{% endif %}
-  </table>
+  <div class="panel">
+    <div class="panel-head"><h3>Таймер</h3>{% if timer %}<span class="timer-pill spacer" data-timer="{{ timer.started_at.isoformat() }}"><span class="live-dot"></span><span data-timer-text>0:00</span></span>{% endif %}</div>
+    {% if timer %}
+    <form method="post" action="/timer" class="panel-body stack-sm"><input type="hidden" name="next" value="/time">
+      <span class="small"><b>{{ names.get(timer.project_id, '') }}</b>{% if timer.note %} · {{ timer.note }}{% endif %}</span>
+      <div class="row" style="gap: 8px"><button class="btn btn-primary" type="submit" name="action" value="stop" style="flex: 1">{{ icon('stop', 14) }}Остановить и записать</button>
+        <button class="btn btn-quiet" type="submit" name="action" value="cancel" data-confirm="Сбросить таймер без записи?">Сбросить</button></div>
+    </form>
+    {% elif projects %}
+    <form method="post" action="/timer" class="panel-body stack-sm"><input type="hidden" name="next" value="/time"><input type="hidden" name="action" value="start">
+      <select class="select" name="task_id"><option value="">Без задачи</option>{% for t in tasks %}<option value="{{ t.id }}">{{ t.title[:70] }}</option>{% endfor %}</select>
+      <div class="row" style="gap: 8px"><select class="select" name="project_id" style="flex: 1">{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select>
+        <button class="btn btn-primary" type="submit">{{ icon('play', 14) }}Старт</button></div>
+    </form>
+    {% else %}<div class="panel-body small faint">Таймер появится, когда вас добавят в проект.</div>{% endif %}
+  </div>
 </div>
+
+<div class="panel">
+  <div class="panel-head"><h3>Записи</h3>{% if projects %}<button class="btn btn-ghost btn-sm spacer" type="button" data-sheet-open="time-sheet">{{ icon('plus', 14) }}Добавить вручную</button>{% endif %}</div>
+  {% for d in days|reverse %}{% set day_entries = entries|selectattr('day', 'equalto', d)|list %}{% if day_entries %}
+  <div class="group-label">{{ ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][d.weekday()] }}, {{ d.strftime('%d.%m') }} · {{ '%g' % (day_entries|sum(attribute='hours')) }} ч</div>
+  {% for e in day_entries %}
+  <div class="task-row">
+    <span class="mono small strong" style="width: 46px">{{ '%g' % e.hours }} ч</span>
+    <div class="grow"><span class="small strong truncate">{{ names.get(e.project_id, '—') }}</span>{% if e.note %}<span class="meta">{{ e.note }}</span>{% endif %}</div>
+    <form method="post" action="/time?week={{ start }}"><button class="icon-btn" name="delete" value="{{ e.id }}" type="submit" title="Удалить" aria-label="Удалить" data-confirm="Удалить запись?">{{ icon('trash', 15) }}</button></form>
+  </div>
+  {% endfor %}{% endif %}{% endfor %}
+  {% if not entries %}<div class="empty">За эту неделю записей нет.</div>{% endif %}
+</div>
+
+{% if projects %}
+<dialog class="sheet" id="time-sheet" aria-labelledby="tm-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="tm-title">Записать часы</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/time?week={{ start }}" class="sheet-body" id="time-form">
+    <label class="field"><span class="label">Проект</span><select class="select" name="project_id" required>{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select></label>
+    <label class="field"><span class="label">Задача</span><select class="select" name="task_id"><option value="">—</option>{% for t in tasks %}<option value="{{ t.id }}">{{ t.title[:70] }}</option>{% endfor %}</select></label>
+    <div class="fgrid keep">
+      <label class="field"><span class="label">День</span><input class="input" type="date" name="day" value="{{ today }}"></label>
+      <label class="field"><span class="label">Часы</span><input class="input mono" name="hours" placeholder="1,5" required inputmode="decimal" autofocus></label>
+    </div>
+    <div class="row-wrap" style="gap: 6px">{% for h in ['0,5', '1', '2', '4', '8'] %}<button class="chip-btn" type="button" data-set="hours" data-value="{{ h }}">{{ h }} ч</button>{% endfor %}</div>
+    <label class="field"><span class="label">Что делали</span><input class="input" name="note" placeholder="Коротко"></label>
+  </form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="time-form">{{ icon('check', 15) }}Записать</button></div>
+</dialog>
+{% endif %}
 {% endblock %}

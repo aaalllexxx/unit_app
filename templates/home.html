@@ -1,69 +1,177 @@
 {% extends 'base.html' %}
-{% from '_icons.html' import icon, progress, phases, initials %}
-{% block title %}Главная — Лаборатория UNIT{% endblock %}
+{% from '_icons.html' import icon, progress, phases, initials, signal, kind_icon %}
+{% block title %}Сегодня — Лаборатория UNIT{% endblock %}
 {% block content %}
-<div class="page-head">
+{% set weekday = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'][today.weekday()] %}
+<div class="today-head">
   <div class="titles">
-    <span class="eyebrow">{{ today.strftime('%d.%m.%Y') }}</span>
-    <h1>Добрый день, {{ me.name.split()[0] }}</h1>
-    <p class="sub">{% if me.role == 'customer' %}Ваши проекты и этап, на котором сейчас работа.{% else %}Ваши проекты, задачи и часы за неделю.{% endif %}</p>
+    <span class="eyebrow">{{ weekday }}, {{ today.strftime('%d.%m.%Y') }}</span>
+    <h1>{{ 'Доброе утро' if now_hour < 12 else 'Добрый день' if now_hour < 18 else 'Добрый вечер' }}, {{ me.name.split()[0] }}</h1>
+    {% if customer %}<p class="sub">Ваши проекты, их готовность и новости от команды.</p>
+    {% else %}<p class="sub">{% if buckets.late %}Есть просроченные задачи — начните с них.{% elif buckets.today %}На сегодня {{ buckets.today|length }} {{ 'задача' if buckets.today|length == 1 else 'задачи' }} со сроком.{% else %}Срочного нет — хороший день, чтобы продвинуть главное.{% endif %}</p>{% endif %}
   </div>
-  {% if me.role in ('head', 'lead') %}
-  <form method="post" action="/projects" class="actions">
-    <input class="input" name="title" placeholder="Название нового проекта" required style="width: 260px">
-    <button class="btn btn-primary" type="submit">{{ icon('plus', 16) }}Новый проект</button>
-  </form>
+  {% if not customer and me.role in ('head', 'lead') %}
+  <button class="btn btn-primary" type="button" data-sheet-open="new-project">{{ icon('plus', 16) }}Новый проект</button>
   {% endif %}
 </div>
 
-{% if me.role != 'customer' %}
-<div class="stats">
-  <div class="stat"><span class="label-mono">Проекты</span><span class="value">{{ cards|length }}</span><span class="note">в которых вы участвуете</span></div>
-  <div class="stat"><span class="label-mono">Задачи</span><span class="value">{{ tasks|length }}</span><span class="note">открыто на вас</span></div>
-  <a class="stat" href="/time"><span class="label-mono">Часы</span><span class="value">{{ '%g' % hours }}<small> ч</small></span><span class="note">записано на этой неделе</span></a>
-  <div class="stat"><span class="label-mono">В сети</span>
-    {% if online %}<div class="avatars" style="margin-top: 2px">{% for m in online[:6] %}<a class="avatar sm" href="/people/{{ m.id }}" title="{{ m.name }}">{{ initials(m.name) }}</a>{% endfor %}</div>
-    {% else %}<span class="value">0</span>{% endif %}
-    <span class="note">за последние 15 минут</span></div>
+{% if customer %}
+<div class="grid g2">
+  {% for c in cards %}{% set p = c.p %}
+  <a class="panel proj" href="/p/{{ p.id }}">
+    <div class="top"><span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span>
+      {% if p.due %}<span class="tiny faint spacer">до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}</div>
+    <div class="stack-xs"><h3>{{ p.title }}</h3>{% if p.summary %}<p class="small muted">{{ p.summary }}</p>{% endif %}</div>
+    <div class="bar">{{ progress(c.percent) }}<span class="pct">{{ c.percent }}<small>%</small></span></div>
+    {% if c.phases[0].total %}{{ phases(c.phases) }}{% endif %}
+  </a>
+  {% else %}<div class="panel empty" style="grid-column: 1 / -1">Проектов пока нет.</div>{% endfor %}
 </div>
+<div class="section-title"><h2>Новости проектов</h2></div>
+<div class="panel rows">
+  {% for u in news %}
+  <div class="r" style="align-items: flex-start"><span class="badge app-badge" style="width: 34px; height: 34px">{{ icon('activity', 16) }}</span>
+    <div class="grow stack-xs"><span class="tiny faint">{{ names.get(u.project_id, '') }} · {{ u.created_at.strftime('%d.%m.%Y') }}</span><p class="small pre">{{ u.text }}</p></div></div>
+  {% else %}<div class="empty">Новостей пока нет — команда напишет, как только будет что показать.</div>{% endfor %}
+</div>
+{% else %}
+
+<div class="today-grid">
+  <div class="stack">
+    {% if ai_on %}
+    <div class="brief">
+      <div class="brief-head"><span class="ai-mark">{{ icon('spark', 15) }}</span><b>Сводка дня от ИИ</b>
+        <button class="btn btn-quiet btn-sm spacer" type="button" data-brief="day" data-target="#brief-text">{{ icon('refresh', 14) }}{{ 'Обновить' if brief else 'Собрать' }}</button></div>
+      <div id="brief-text" {% if brief %}data-md{% else %}class="small muted"{% endif %}>{{ brief or 'ИИ посмотрит на ваши задачи, сроки и сигналы и подскажет, с чего начать.' }}</div>
+    </div>
+    {% endif %}
+
+    <div class="panel" id="focus">
+      <div class="panel-head"><h3>Мои задачи</h3><span class="count-badge">{{ tasks|length }}</span>
+        {% if ai_on %}<button class="btn btn-quiet btn-sm spacer" type="button" data-ai-open data-ask="Помоги расставить приоритеты в моих задачах на сегодня и неделю.">{{ icon('spark', 14) }}Приоритеты</button>{% endif %}</div>
+      {% set labels = {'late': 'Просрочено', 'today': 'Сегодня', 'week': 'На этой неделе', 'later': 'Позже и без срока'} %}
+      {% for key in ('late', 'today', 'week', 'later') %}{% if buckets[key] %}
+      <div class="group-label {{ 'late' if key == 'late' }}">{{ labels[key] }} · {{ buckets[key]|length }}</div>
+      {% for t in buckets[key][:8] %}
+      <div class="task-row">
+        <button class="task-check" type="button" data-task-done="{{ t.id }}" data-was="{{ t.column }}" title="Готово" aria-label="Отметить «{{ t.title }}» сделанной">{{ icon('check', 14) }}</button>
+        <div class="grow">
+          <a class="t" href="/p/{{ t.project_id }}?task={{ t.id }}#tasks">{{ t.title }}</a>
+          <span class="meta"><span class="prio p{{ t.priority or 2 }}" style="align-self: center"></span>{{ names.get(t.project_id, '') }} · {{ columns[t.column] }}{% if t.checklist %} · {{ t.checklist|selectattr('done')|list|length }}/{{ t.checklist|length }}{% endif %}</span>
+        </div>
+        {% if t.due %}<span class="mono tiny {{ 'late' if t.due < today else 'faint' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}
+        {% if not running %}<form method="post" action="/timer"><input type="hidden" name="action" value="start"><input type="hidden" name="task_id" value="{{ t.id }}"><input type="hidden" name="next" value="/home">
+          <button class="icon-btn" type="submit" title="Запустить таймер" aria-label="Запустить таймер">{{ icon('play', 16) }}</button></form>{% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}{% endfor %}
+      {% if not tasks %}<div class="all-good">{{ icon('check', 18) }}Открытых задач нет — можно взять новую в проекте.</div>{% endif %}
+    </div>
+
+    <div>
+      <div class="section-title"><h2>Проекты</h2><a class="spacer small muted row" style="gap: 6px" href="/projects">Все {{ icon('arrow', 14) }}</a></div>
+      <div class="grid g2">
+        {% for c in cards %}{% set p = c.p %}
+        <a class="panel proj" href="/p/{{ p.id }}">
+          <div class="top">
+            <span class="chip tone {{ 's-late' if c.health == 'late' else 's-paused' if c.health == 'risk' else 's-' ~ p.status }}"><span class="dot"></span>{{ 'Просрочен' if c.health == 'late' else 'Отстаёт' if c.health == 'risk' else statuses[p.status] }}</span>
+            {% if p.due %}<span class="tiny faint spacer {{ 'late' if p.due < today and c.percent < 100 }}">до {{ p.due.strftime('%d.%m') }}</span>{% endif %}
+          </div>
+          <h3>{{ p.title }}</h3>
+          <div class="bar">{{ progress(c.percent) }}<span class="pct">{{ c.percent }}<small>%</small></span></div>
+          {% if c.phases[0].total %}{{ phases(c.phases) }}{% endif %}
+        </a>
+        {% else %}
+        <div class="panel empty" style="grid-column: 1 / -1">Вы пока не в команде проекта.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="stack">
+    {% if signals %}
+    <div class="panel">
+      <div class="panel-head"><h3>Требует внимания</h3><span class="count-badge spacer">{{ signals|length }}</span></div>
+      <div class="signals">{% for s in signals %}{{ signal(s) }}{% endfor %}</div>
+      {% if me.role in ('head', 'lead') %}<a class="panel-foot small muted row" style="gap: 6px" href="/pulse">Все сигналы на «Пульсе» {{ icon('arrow', 14) }}</a>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <div class="panel-head"><h3>Стендап</h3>{% if checkin %}<span class="chip tone s-active spacer">{{ icon('check', 12) }}записан</span>{% endif %}</div>
+      {% if checkin %}
+      <div class="panel-body checkin-done">
+        {% if checkin.done %}<div><b>Сделано</b><p class="pre">{{ checkin.done }}</p></div>{% endif %}
+        {% if checkin.plan %}<div><b>Дальше</b><p class="pre">{{ checkin.plan }}</p></div>{% endif %}
+        {% if checkin.blockers %}<div><b style="color: var(--danger)">Мешает</b><p class="pre">{{ checkin.blockers }}</p></div>{% endif %}
+        <button class="btn btn-quiet btn-sm" type="button" data-sheet-open="checkin-sheet" style="justify-self: start">{{ icon('pen', 14) }}Изменить</button>
+      </div>
+      {% else %}
+      <div class="panel-body stack-sm">
+        <p class="small muted">Минута в день: что сделано, что дальше и что мешает. Блокер сразу увидит руководитель.</p>
+        <button class="btn btn-ghost" type="button" data-sheet-open="checkin-sheet">{{ icon('pen', 15) }}Записать стендап</button>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h3>Неделя</h3><a class="spacer small muted" href="/time">{{ '%g' % hours }} ч</a></div>
+      <div class="panel-body">
+        <div class="week-bars">{% for d, h in per_day.items() %}
+          <div class="{{ 'is-today' if d == today }}" title="{{ d.strftime('%d.%m') }}: {{ '%g' % h }} ч"><i class="{{ 'on' if h }}" style="height: {{ (h / top * 100)|round|int }}%"></i><span>{{ ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'][loop.index0] }}</span></div>
+        {% endfor %}</div>
+      </div>
+      {% if running %}
+      <form method="post" action="/timer" class="panel-foot row"><input type="hidden" name="next" value="/home">
+        <span class="timer-pill" data-timer="{{ running.started_at.isoformat() }}"><span class="live-dot"></span><span data-timer-text>0:00</span></span>
+        <span class="grow tiny faint truncate">{{ running.note }}</span>
+        <button class="btn btn-primary btn-sm" type="submit" name="action" value="stop">{{ icon('stop', 13) }}Стоп</button></form>
+      {% endif %}
+    </div>
+
+    {% if pinned %}
+    <div class="panel">
+      <div class="panel-head"><h3>Закреплено на столе</h3><a class="spacer small muted" href="/desk">Стол</a></div>
+      <div class="rows">{% for i in pinned %}
+        <a class="r" href="/desk?open={{ i.id }}"><span class="badge app-badge" style="width: 32px; height: 32px">{{ kind_icon(i.kind, 15) }}</span><span class="grow small strong truncate">{{ i.title or kinds[i.kind] }}</span></a>
+      {% endfor %}</div>
+    </div>
+    {% endif %}
+
+    {% if online %}
+    <div class="panel panel-pad row" style="gap: 12px">
+      <span class="label-mono">В сети</span>
+      <div class="avatars spacer">{% for m in online[:7] %}<a class="avatar sm" href="/people/{{ m.id }}" title="{{ m.name }}">{{ initials(m.name) }}</a>{% endfor %}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<dialog class="sheet" id="checkin-sheet" aria-labelledby="checkin-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="checkin-title">Стендап · {{ today.strftime('%d.%m') }}</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/checkin" class="sheet-body" id="checkin-form">
+    <input type="hidden" name="next" value="/home">
+    <label class="field"><span class="label">Что сделано</span><textarea class="textarea" name="done" data-autosize rows="2" autofocus placeholder="Вчера и сегодня">{{ checkin.done if checkin }}</textarea></label>
+    <label class="field"><span class="label">Что дальше</span><textarea class="textarea" name="plan" data-autosize rows="2" placeholder="Над чем работаю">{{ checkin.plan if checkin }}</textarea></label>
+    <label class="field"><span class="label">Что мешает</span><textarea class="textarea" name="blockers" data-autosize rows="1" placeholder="Пусто — если ничего">{{ checkin.blockers if checkin }}</textarea></label>
+    <div class="field"><span class="label">Настроение</span>
+      <div class="mood">{% for n, e in [(1, '😣'), (2, '😕'), (3, '🙂'), (4, '😊'), (5, '🚀')] %}<label><input type="radio" name="mood" value="{{ n }}" {{ 'checked' if (checkin.mood if checkin else 3) == n }}><span>{{ e }}</span></label>{% endfor %}</div></div>
+  </form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="checkin-form">{{ icon('check', 15) }}Записать</button></div>
+</dialog>
 {% endif %}
 
-<div class="grid split">
-  <div>
-    <div class="section-title"><h2>Проекты</h2><a class="spacer small muted row" style="gap: 6px" href="/projects">Все проекты {{ icon('arrow', 14) }}</a></div>
-    <div class="grid">
-      {% for c in cards %}{% set p = c.p %}
-      <a class="panel proj" href="/p/{{ p.id }}">
-        <div class="top">
-          <span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span>
-          {% if p.closed %}<span class="chip">{{ icon('lock', 12) }}Закрытый</span>{% endif %}
-          {% if p.due %}<span class="tiny faint spacer {{ 'late' if p.due < today and c.percent < 100 }}">до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}
-        </div>
-        <div class="stack-xs"><h3>{{ p.title }}</h3>{% if p.summary %}<p class="small muted">{{ p.summary }}</p>{% endif %}</div>
-        <div class="bar">{{ progress(c.percent) }}<span class="pct">{{ c.percent }}<small>%</small></span></div>
-        {% if c.phases[0].total %}{{ phases(c.phases) }}{% endif %}
-      </a>
-      {% else %}
-      <div class="panel empty">Пока вы не участвуете ни в одном проекте.</div>
-      {% endfor %}
-    </div>
-  </div>
-
-  {% if me.role != 'customer' %}
-  <div>
-    <div class="section-title"><h2>Мои задачи</h2><span class="count-badge">{{ tasks|length }}</span></div>
-    <div class="panel rows">
-      {% for t in tasks[:12] %}
-      <a class="r" href="/p/{{ t.project_id }}#tasks">
-        <div class="grow stack-xs">
-          <span class="small strong truncate">{{ t.title }}</span>
-          <span class="tiny faint">{{ names.get(t.project_id, '') }} · {{ columns[t.column] }}</span>
-        </div>
-        {% if t.due %}<span class="tiny mono {{ 'late' if t.due < today else 'faint' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}
-      </a>
-      {% else %}<div class="empty">Открытых задач нет.</div>{% endfor %}
-    </div>
-  </div>
-  {% endif %}
-</div>
+{% if me.role in ('head', 'lead') %}
+<dialog class="sheet" id="new-project" aria-labelledby="np-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="np-title">Новый проект</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/projects" class="sheet-body" id="np-form">
+    <label class="field"><span class="label">Название</span><input class="input" name="title" required autofocus placeholder="Например, «Аудит сайта клиента»"></label>
+    <label class="field"><span class="label">Коротко о цели</span><input class="input" name="summary" placeholder="Что должно получиться"></label>
+    <label class="toggle-row"><span class="grow"><b>Закрытый</b><span>Виден только команде проекта</span></span><span class="switch"><input type="checkbox" name="closed" value="1"><i></i></span></label>
+  </form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="np-form">{{ icon('plus', 15) }}Создать</button></div>
+</dialog>
+{% endif %}
 {% endblock %}

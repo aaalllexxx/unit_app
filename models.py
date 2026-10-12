@@ -25,6 +25,10 @@ Session = sessionmaker(bind=ENGINE, future=True, expire_on_commit=False)
 GRADES = ["Стажёр", "Junior", "Middle", "Senior", "Тимлид"]
 ROLES = {"head": "Руководитель лаборатории", "lead": "Руководитель направления",
          "member": "Сотрудник", "customer": "Заказчик", "pending": "Ожидает подтверждения"}
+ROLE_ORDER = ("head", "lead", "member", "customer", "pending")
+ROLE_SHORT = {"head": "Руководитель", "lead": "Лид направления", "member": "Сотрудник", "customer": "Заказчик",
+              "pending": "Ожидает"}
+DESK_KINDS = {"note": "Заметка", "checklist": "Чек-лист", "link": "Ссылка", "file": "Файл", "code": "Код"}
 PHASES = [("plan", "Планирование", 15), ("build", "Реализация", 50), ("test", "Тестирование", 25),
           ("release", "Релиз", 10)]                       # (ключ, название, доля в готовности части, %)
 STATUSES = {"idea": "Идея", "active": "В работе", "paused": "Приостановлен", "done": "Завершён"}
@@ -70,6 +74,15 @@ class Member(Base):
     notify_email: Mapped[bool] = mapped_column(Boolean, default=True)
     joined: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    # Все выданные роли; role — основная. Человек с несколькими ролями переключается между ними
+    roles: Mapped[list] = mapped_column(JSON, default=list)
+    prefs: Mapped[dict] = mapped_column(JSON, default=dict)               # вибрация, вид канбана…
+
+    def all_roles(self) -> list:
+        granted = [r for r in (self.roles or []) if r in ROLES and r != "pending"]
+        if self.role not in granted:
+            granted.insert(0, self.role)
+        return [r for r in ROLE_ORDER if r in granted]
 
 
 class Visit(Base):
@@ -143,6 +156,18 @@ class Task(Base):
     created_by: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    checklist: Mapped[list] = mapped_column(JSON, default=list)           # [{"text", "done"}]
+    moved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)   # когда сменилась колонка
+    priority: Mapped[int] = mapped_column(Integer, default=2)            # 1 срочно … 3 когда-нибудь
+
+
+class TaskComment(Base):
+    __tablename__ = "task_comments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(String(40))
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
 class TimeEntry(Base):
@@ -168,8 +193,109 @@ class Update(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
+# ─── Рабочий стол, ИИ, контроль ─────────────────────────────────────────────
+class Setting(Base):
+    """Настройки портала: ИИ и прочее, что задаёт руководитель."""
+    __tablename__ = "settings"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
+class DeskItem(Base):
+    """Наработка на рабочем столе: заметка, чек-лист, ссылка, файл или код.
+    Можно привязать к проекту и показать команде — тогда она видна в «Материалах»."""
+    __tablename__ = "desk_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="note")
+    title: Mapped[str] = mapped_column(String(200), default="")
+    body: Mapped[str] = mapped_column(Text, default="")                   # текст заметки или код
+    data: Mapped[dict] = mapped_column(JSON, default=dict)                # пункты, url, файл, язык
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), default=None)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    color: Mapped[str] = mapped_column(String(16), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+
+
+class Notice(Base):
+    """Уведомление в портале (колокольчик). key — чтобы напоминание не повторялось."""
+    __tablename__ = "notices"
+    __table_args__ = (UniqueConstraint("member_id", "key"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(20), default="info")         # info | task | deadline | blocker | ai
+    text: Mapped[str] = mapped_column(String(400))
+    link: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+
+
+class Checkin(Base):
+    """Стендап: что сделал, что дальше, что мешает. Один в день."""
+    __tablename__ = "checkins"
+    __table_args__ = (UniqueConstraint("member_id", "day"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    done: Mapped[str] = mapped_column(Text, default="")
+    plan: Mapped[str] = mapped_column(Text, default="")
+    blockers: Mapped[str] = mapped_column(Text, default="")
+    mood: Mapped[int] = mapped_column(Integer, default=3)                 # 1…5
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class Timer(Base):
+    """Идущий таймер: остановили — превратился в запись учёта времени."""
+    __tablename__ = "timers"
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    task_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), default=None)
+    note: Mapped[str] = mapped_column(String(300), default="")
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class AiMessage(Base):
+    """Разговор с ИИ. thread: «me» — личный, «p<id>» — о проекте."""
+    __tablename__ = "ai_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    thread: Mapped[str] = mapped_column(String(40), default="me", index=True)
+    role: Mapped[str] = mapped_column(String(12))                         # user | assistant
+    content: Mapped[str] = mapped_column(Text)
+    actions: Mapped[list] = mapped_column(JSON, default=list)             # предложения ИИ и что применено
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class AiUsage(Base):
+    __tablename__ = "ai_usage"
+    __table_args__ = (UniqueConstraint("member_id", "day"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, default=date.today)
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    tokens: Mapped[int] = mapped_column(Integer, default=0)
+
+
+def _migrate() -> None:
+    """Новые столбцы в таблицах прошлых версий (create_all их не добавляет)."""
+    added = {
+        "members": [("roles", "JSON DEFAULT '[]'"), ("prefs", "JSON DEFAULT '{}'")],
+        "tasks": [("checklist", "JSON DEFAULT '[]'"), ("moved_at", "DATETIME"), ("priority", "INTEGER DEFAULT 2")],
+    }
+    with ENGINE.begin() as con:
+        for table, columns in added.items():
+            have = {row[1] for row in con.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for name, ddl in columns:
+                if name not in have:
+                    con.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 def init() -> None:
     Base.metadata.create_all(ENGINE)
+    _migrate()
     with Session() as s:
         if not s.query(Direction).count():
             s.add_all([

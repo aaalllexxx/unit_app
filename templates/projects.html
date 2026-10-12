@@ -9,25 +9,24 @@
     <p class="sub">Все проекты, которые вам видны, с готовностью по этапам.</p>
   </div>
   {% if me.role in ('head', 'lead') %}
-  <form method="post" action="/projects" class="actions">
-    <input class="input" name="title" placeholder="Название нового проекта" required style="width: 250px">
-    <label class="check small"><input type="checkbox" name="closed" value="1">Закрытый</label>
-    <button class="btn btn-primary" type="submit">{{ icon('plus', 16) }}Создать</button>
-  </form>
+  <div class="actions"><button class="btn btn-primary" type="button" data-sheet-open="new-project">{{ icon('plus', 16) }}Новый проект</button></div>
   {% endif %}
 </div>
-<div class="tabs">
-  <a href="/projects" class="{{ 'on' if not active }}">Все</a>
-  {% for k, v in statuses.items() %}<a href="/projects?status={{ k }}" class="{{ 'on' if active == k }}">{{ v }}</a>{% endfor %}
+<div class="row-wrap" style="gap: 8px; margin-bottom: 16px">
+  <div class="searchbar" style="margin: 0; flex: 1 1 240px">{{ icon('search', 17) }}<input class="input" type="search" placeholder="Найти проект" data-filter-input="[data-proj]" aria-label="Поиск"></div>
+  <nav class="tagbar" style="margin: 0">
+    <a href="/projects" class="tag-chip {{ 'on' if not active }}">Все</a>
+    {% for k, v in statuses.items() %}<a href="/projects?status={{ k }}" class="tag-chip {{ 'on' if active == k }}">{{ v }}</a>{% endfor %}
+  </nav>
 </div>
 <div class="grid g2">
   {% for p in rows %}{% set i = info[p.id] %}{% set d = dirs.get(p.direction_id) %}
-  <a class="panel proj" href="/p/{{ p.id }}">
+  <a class="panel proj" href="/p/{{ p.id }}" data-proj data-text="{{ (p.title ~ ' ' ~ p.summary ~ ' ' ~ p.customer)|lower }}">
     <div class="top">
       {% if d %}<span class="chip tone t-{{ d.tone }}">{{ d.title }}</span>{% endif %}
-      <span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span>
-      {% if p.closed %}<span class="chip">{{ icon('lock', 12) }}Закрытый</span>{% endif %}
-      {% if p.public %}<span class="chip" title="Показывается на лендинге">{{ icon('eye', 12) }}Публичный</span>{% endif %}
+      <span class="chip tone {{ 's-late' if i.health == 'late' else 's-paused' if i.health == 'risk' else 's-' ~ p.status }}"><span class="dot"></span>{{ 'Просрочен' if i.health == 'late' else 'Отстаёт' if i.health == 'risk' else statuses[p.status] }}</span>
+      {% if p.closed %}<span class="chip">{{ icon('lock', 12) }}</span>{% endif %}
+      {% if p.public %}<span class="chip" title="Показывается на лендинге">{{ icon('eye', 12) }}</span>{% endif %}
     </div>
     <div class="stack-xs"><h3>{{ p.title }}</h3>{% if p.summary %}<p class="small muted">{{ p.summary }}</p>{% endif %}</div>
     <div class="bar">{{ progress(i.percent) }}<span class="pct">{{ i.percent }}<small>%</small></span></div>
@@ -35,8 +34,23 @@
     <div class="meta">
       {% if i.lead %}<span>{{ icon('user', 13) }}{{ i.lead.name }}</span>{% endif %}
       {% if p.due %}<span class="{{ 'late' if p.due < today and i.percent < 100 }}">{{ icon('calendar', 13) }}до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}
+      {% if i.open %}<span>{{ icon('board', 13) }}{{ i.open }} задач</span>{% endif %}
     </div>
   </a>
   {% else %}<div class="panel empty" style="grid-column: 1 / -1">Проектов пока нет.</div>{% endfor %}
 </div>
+
+{% if me.role in ('head', 'lead') %}
+<dialog class="sheet" id="new-project" aria-labelledby="np-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="np-title">Новый проект</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/projects" class="sheet-body" id="np-form">
+    <label class="field"><span class="label">Название</span><input class="input" name="title" required autofocus placeholder="Например, «Аудит сайта клиента»"></label>
+    <label class="field"><span class="label">Коротко о цели</span><input class="input" name="summary" placeholder="Что должно получиться"></label>
+    <label class="field"><span class="label">Направление</span><select class="select" name="direction_id">{% for d in dirs.values() %}<option value="{{ d.id }}" {{ 'selected' if d.id == me.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
+    <label class="toggle-row"><span class="grow"><b>Закрытый</b><span>Виден только команде проекта</span></span><span class="switch"><input type="checkbox" name="closed" value="1"><i></i></span></label>
+  </form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="np-form">{{ icon('plus', 15) }}Создать</button></div>
+</dialog>
+{% endif %}
 {% endblock %}

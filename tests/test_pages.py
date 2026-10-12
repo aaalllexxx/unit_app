@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from datetime import date, timedelta
 
-os.environ.update(LAB_DATA=tempfile.mkdtemp(), LAB_SECURE="0")
+os.environ.update(LAB_DATA=tempfile.mkdtemp(), LAB_SECURE="0", LAB_WORKER="0")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import models as M  # noqa: E402
@@ -64,6 +64,26 @@ class PagesTest(unittest.TestCase):
         self.assertEqual(g.get("/offline").status_code, 200)
         for icon in ("icon-192.png", "icon-512.png", "icon-maskable.png", "apple-touch-icon.png"):
             self.assertEqual(g.get("/static/" + icon).status_code, 200, icon)
+
+
+class TagLoginTest(unittest.TestCase):
+    def test_lab_tag_makes_member(self):
+        """Аккаунт UNIT с тегом «лаборатория» входит сразу сотрудником, без подтверждения."""
+        import io as _io
+        import json as _json
+        from unittest import mock
+        import app as lab
+
+        c = client()
+        c.get("/login")
+        with c.session_transaction() as sess:
+            state = sess["oidc"]["state"]
+        info = {"sub": "lab-1", "name": "Ира", "email": "ira@labunit.ru", "unit_tags": ["лаборатория", "ученик"]}
+        with mock.patch.object(lab, "_post", return_value={"access_token": "t"}),                 mock.patch.object(lab.urllib.request, "urlopen", return_value=_io.BytesIO(_json.dumps(info).encode())):
+            r = c.get("/auth/callback", query_string={"state": state, "code": "x"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(M.Session().get(M.Member, "lab-1").role, "member")
+        self.assertEqual(c.get("/home").status_code, 200)
 
 
 if __name__ == "__main__":

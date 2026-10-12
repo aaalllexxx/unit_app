@@ -1,8 +1,8 @@
 /* Service worker: приложение ставится на телефон и компьютер, оформление грузится из кеша,
    а без связи вместо ошибки браузера открывается страница «Нет связи».
    Страницы с данными не кешируются: они личные и должны быть свежими. */
-const CACHE = 'unit-shell-v1';
-const SHELL = ['/offline', '/static/unit.css?v=3', '/static/unit.js?v=2', '/static/logo.png', '/static/icon-192.png'];
+const CACHE = 'unit-shell-v3';
+const SHELL = ['/offline', '/static/unit.css?v=6', '/static/unit.js?v=6', '/static/lab.js?v=1', '/static/logo.png', '/static/icon-192.png'];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

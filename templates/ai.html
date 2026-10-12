@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}ИИ-помощник — Лаборатория UNIT{% endblock %}
+{% block apptitle %}ИИ-помощник{% endblock %}
+{% block content %}
+{% if not ready %}
+<div class="panel center-card"><div class="panel-body stack-sm" style="padding: 30px">
+  <span class="ai-mark" style="width: 46px; height: 46px; border-radius: 14px">{{ icon('spark', 22) }}</span>
+  <h1 style="font-size: 22px; margin-top: 6px">ИИ пока не включён</h1>
+  <p class="muted">Руководитель лаборатории подключает модель в «Обзор → ИИ» и выбирает, кому она доступна.</p>
+</div></div>
+{% else %}
+<div class="chat-page">
+  <div class="panel threads-box">
+    <div class="panel-head"><h3>Разговоры</h3></div>
+    <nav class="panel-body threads">
+      <a href="/ai" class="{{ 'on' if thread == 'me' }}">{{ icon('user', 16) }}Личный</a>
+      {% for p in projects %}<a href="/ai?thread=p{{ p.id }}" class="{{ 'on' if thread == 'p' ~ p.id }}">{{ icon('folder', 16) }}<span class="truncate">{{ p.title }}</span></a>{% endfor %}
+    </nav>
+    <div class="panel-foot tiny faint">Осталось запросов сегодня: {{ left if left < 100000 else 'без ограничения' }}</div>
+  </div>
+  <div class="panel chat-box">
+    <div class="panel-head">
+      <span class="ai-mark">{{ icon('spark', 15) }}</span>
+      <select class="select input-sm only-sm-flex" style="width: auto; max-width: 60%" onchange="location.href = this.value" aria-label="Разговор">
+        <option value="/ai" {{ 'selected' if thread == 'me' }}>Личный разговор</option>
+        {% for p in projects %}<option value="/ai?thread=p{{ p.id }}" {{ 'selected' if thread == 'p' ~ p.id }}>{{ p.title }}</option>{% endfor %}
+      </select>
+      <h3 class="hide-md">{{ 'Личный разговор' if thread == 'me' else 'О проекте' }}</h3>
+      <button class="btn btn-quiet btn-sm spacer" type="button" data-chat-clear>{{ icon('trash', 14) }}Очистить</button>
+    </div>
+    {% set chat_thread = thread %}{% set chat_ask = ask %}
+    {% include '_chat.html' %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

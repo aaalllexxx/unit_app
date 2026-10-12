@@ -1,47 +1,76 @@
 {% extends 'base.html' %}
 {% from '_icons.html' import icon, initials %}
 {% block title %}{{ m.name }} — Лаборатория UNIT{% endblock %}
+{% block back %}/people{% endblock %}
 {% block content %}
-<div class="crumbs" style="margin-bottom: 14px"><a href="/people">Люди</a><span>/</span><span>{{ m.name }}</span></div>
-<div class="panel panel-pad row-wrap" style="gap: 22px; margin-bottom: 22px">
+
+<div class="panel profile-top">
   <span class="avatar lg">{{ initials(m.name) }}</span>
-  <div class="grow stack-sm" style="gap: 6px; min-width: 220px">
-    <h1 style="font-size: 28px">{{ m.name }}</h1>
-    <div class="muted">{{ m.position or roles[m.role] }}{% if m.grade %} · {{ m.grade }}{% endif %}</div>
-    <div class="row-wrap" style="margin-top: 4px">
+  <div class="who">
+    <h1>{{ m.name }}</h1>
+    <span class="muted">{{ m.position or roles[m.role] }}{% if m.grade %} · {{ m.grade }}{% endif %}</span>
+    <div class="row-wrap" style="gap: 6px; margin-top: 2px">
       {% for d in dirs if d.id == m.direction_id %}<a href="/d/{{ d.slug }}" class="chip tone t-{{ d.tone }}">{{ d.title }}</a>{% endfor %}
       {% for t in teams if t.id == m.team_id %}<span class="chip">{{ t.title }}</span>{% endfor %}
+      {% for r in member_roles %}<span class="chip tone s-idea">{{ role_short[r] }}</span>{% endfor %}
     </div>
   </div>
-  <div class="stats" style="margin: 0; grid-template-columns: repeat(3, minmax(110px, 1fr)); flex: 1 1 380px">
-    <div class="stat"><span class="label-mono">Дней</span><span class="value">{{ act.days30 }}</span><span class="note">с заходами из 30</span></div>
-    <div class="stat"><span class="label-mono">Задачи</span><span class="value">{{ open_tasks }}</span><span class="note">открыто</span></div>
-    <div class="stat"><span class="label-mono">Закрыто</span><span class="value">{{ done30 }}</span><span class="note">за месяц</span></div>
+  <div class="mini-stats">
+    <div><b>{{ open_tasks|length }}</b><span>задач открыто</span></div>
+    <div><b>{{ done30 }}</b><span>закрыто за месяц</span></div>
+    <div><b>{{ '%g' % hours }}</b><span>часов на неделе</span></div>
+    <div><b>{{ act.days30 }}</b><span>дней из 30</span></div>
   </div>
+  {% if own or head %}<button class="btn btn-ghost" type="button" data-sheet-open="profile-sheet" style="margin-left: auto">{{ icon('pen', 15) }}{{ 'Редактировать' if own else 'Изменить' }}</button>{% endif %}
 </div>
 
 <div class="grid split">
   <div class="stack">
     {% if m.about %}<div class="panel"><div class="panel-head"><h3>О себе</h3></div><p class="panel-body muted pre">{{ m.about }}</p></div>{% endif %}
     <div class="panel">
+      <div class="panel-head"><h3>Задачи в работе</h3><span class="count-badge spacer">{{ open_tasks|length }}</span></div>
+      {% for t in open_tasks[:10] %}
+      <div class="task-row"><span class="prio p{{ t.priority or 2 }}"></span>
+        <div class="grow"><a class="t" href="/p/{{ t.project_id }}?task={{ t.id }}#tasks">{{ t.title }}</a><span class="meta">{{ names.get(t.project_id, 'другой проект') }}</span></div>
+        {% if t.due %}<span class="mono tiny {{ 'late' if t.due < today else 'faint' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}</div>
+      {% else %}<div class="empty">Открытых задач нет.</div>{% endfor %}
+    </div>
+    <div class="panel">
       <div class="panel-head"><h3>Проекты</h3><span class="count-badge spacer">{{ projects|length }}</span></div>
       <div class="rows">
         {% for p, role in projects %}
-        <a class="r" href="/p/{{ p.id }}"><span class="grow small strong">{{ p.title }}</span><span class="tiny faint hide-sm">{{ role }}</span><span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span></a>
+        <a class="r" href="/p/{{ p.id }}"><span class="grow small strong truncate">{{ p.title }}</span><span class="tiny faint hide-sm">{{ role }}</span><span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span></a>
         {% else %}<div class="empty">Пока нет.</div>{% endfor %}
       </div>
     </div>
+    {% if checkins %}
     <div class="panel">
-      <div class="panel-head"><h3>Навыки</h3></div>
-      <div class="panel-body stack-sm">
-        {% for s in m.skills %}
-        <div class="skill"><span>{{ s.name }}</span><span class="lv">{% for i in range(5) %}<i class="{{ 'on' if i < s.level }}"></i>{% endfor %}</span></div>
-        {% else %}<p class="small faint">Не указаны.</p>{% endfor %}
-      </div>
+      <div class="panel-head"><h3>Стендапы</h3></div>
+      <div class="rows">{% for c in checkins %}
+        <div class="r" style="align-items: flex-start"><span class="mono tiny faint" style="width: 42px; padding-top: 2px">{{ c.day.strftime('%d.%m') }}</span>
+          <div class="grow stack-xs small">{% if c.done %}<span><b>Сделано:</b> {{ c.done }}</span>{% endif %}{% if c.plan %}<span class="muted"><b>Дальше:</b> {{ c.plan }}</span>{% endif %}{% if c.blockers %}<span style="color: var(--danger)"><b>Мешает:</b> {{ c.blockers }}</span>{% endif %}</div>
+          <span>{{ ['😣', '😕', '🙂', '😊', '🚀'][(c.mood or 3) - 1] }}</span></div>
+      {% endfor %}</div>
     </div>
+    {% endif %}
   </div>
 
   <div class="stack">
+    <div class="panel">
+      <div class="panel-head"><h3>Навыки</h3></div>
+      <div class="panel-body">
+        {% if m.skills %}<div class="skill-tags">{% for s in m.skills %}<span class="skill-tag">{{ s.name }}<i>{% for i in range(5) %}<b class="{{ 'on' if i < s.level }}"></b>{% endfor %}</i></span>{% endfor %}</div>
+        {% else %}<p class="small faint">Не указаны.{% if own %} Добавьте в «Редактировать» — так проще подобрать вас в проект.{% endif %}</p>{% endif %}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Контакты</h3></div>
+      <dl class="panel-body kv" style="margin: 0; grid-template-columns: 90px minmax(0, 1fr)">
+        <dt>Почта</dt><dd>{% if m.email %}<a href="mailto:{{ m.email }}" style="color: var(--accent)">{{ m.email }}</a>{% else %}—{% endif %}</dd>
+        <dt>Telegram</dt><dd>{% if m.contacts.get('telegram') %}<a href="https://t.me/{{ m.contacts.get('telegram')|replace('@', '') }}" target="_blank" rel="noopener" style="color: var(--accent)">{{ m.contacts.get('telegram') }}</a>{% else %}—{% endif %}</dd>
+        <dt>Телефон</dt><dd>{% if m.contacts.get('phone') %}<a href="tel:{{ m.contacts.get('phone') }}" style="color: var(--accent)">{{ m.contacts.get('phone') }}</a>{% else %}—{% endif %}</dd>
+      </dl>
+    </div>
     <div class="panel">
       <div class="panel-head"><h3>Активность</h3><span class="tiny faint spacer">12 недель</span></div>
       <div class="panel-body stack-sm">
@@ -49,38 +78,44 @@
         <p class="tiny faint">{% if m.last_seen %}Последний заход {{ m.last_seen.strftime('%d.%m.%Y %H:%M') }}{% else %}Ещё не заходил{% endif %}</p>
       </div>
     </div>
-    <div class="panel">
-      <div class="panel-head"><h3>Контакты</h3></div>
-      <dl class="panel-body kv" style="margin: 0">
-        <dt>Почта</dt><dd>{% if m.email %}<a href="mailto:{{ m.email }}">{{ m.email }}</a>{% else %}—{% endif %}</dd>
-        <dt>Telegram</dt><dd>{{ m.contacts.get('telegram') or '—' }}</dd>
-        <dt>Телефон</dt><dd>{{ m.contacts.get('phone') or '—' }}</dd>
-      </dl>
+  </div>
+</div>
+
+{% if own or head %}
+<dialog class="sheet wide" id="profile-sheet" aria-labelledby="pf-title" {{ 'data-open' if open_edit }}>
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="pf-title">{{ 'Ваш профиль' if own else 'Профиль · ' ~ m.name }}</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" class="sheet-body" id="profile-form">
+    <div class="fgrid three profile-row">
+      <label class="field"><span class="label">Должность</span><input class="input" name="position" value="{{ m.position }}" placeholder="Бэкенд-разработчик" autofocus></label>
+      <label class="field"><span class="label">Telegram</span><input class="input" name="telegram" value="{{ m.contacts.get('telegram', '') }}" placeholder="@ник"></label>
+      <label class="field"><span class="label">Телефон</span><input class="input" name="phone" value="{{ m.contacts.get('phone', '') }}" type="tel" inputmode="tel" placeholder="+7…"></label>
     </div>
-    {% if own or head %}
-    <details class="panel" {{ 'open' if own and not m.position }}>
-      <summary class="panel-head"><h3>Редактировать профиль</h3><span class="spacer faint">{{ icon('down', 16) }}</span></summary>
-      <form method="post" class="panel-body stack-sm">
-        <label class="field"><span class="label">Должность</span><input class="input" name="position" value="{{ m.position }}" placeholder="Например, бэкенд-разработчик"></label>
-        <label class="field"><span class="label">О себе</span><textarea class="textarea" name="about" rows="3">{{ m.about }}</textarea></label>
-        <label class="field"><span class="label">Навыки</span><span class="hint">По строке: «Python — 4», уровень от 1 до 5</span>
-          <textarea class="textarea" name="skills" rows="4">{% for s in m.skills %}{{ s.name }} — {{ s.level }}
-{% endfor %}</textarea></label>
-        <label class="field"><span class="label">Telegram</span><input class="input" name="telegram" value="{{ m.contacts.get('telegram', '') }}"></label>
-        <label class="field"><span class="label">Телефон</span><input class="input" name="phone" value="{{ m.contacts.get('phone', '') }}"></label>
-        <label class="check small"><input type="checkbox" name="notify_email" value="1" {{ 'checked' if m.notify_email }}>Присылать письма о задачах и проектах</label>
-        {% if head %}
-        <hr>
-        <span class="label-mono">Для руководителя</span>
+    <label class="field"><span class="label">О себе</span><textarea class="textarea" name="about" data-autosize rows="2" placeholder="Чем занимаетесь и в чём сильны">{{ m.about }}</textarea></label>
+    <div class="field"><span class="label">Навыки</span><span class="hint">Введите навык и Enter; уровень — точками от 1 до 5</span>
+      <div class="skills-edit" data-skills>
+        {% for s in m.skills %}<span data-skill="{{ s.name }}" data-level="{{ s.level }}"></span>{% endfor %}
+        <input class="input" data-skill-input placeholder="+ Python, Figma…" aria-label="Новый навык">
+      </div>
+    </div>
+    <label class="toggle-row"><span class="grow"><b>Письма о задачах и проектах</b><span>Уведомления в портале приходят всегда</span></span>
+      <span class="switch"><input type="checkbox" name="notify_email" value="1" {{ 'checked' if m.notify_email }}><i></i></span></label>
+    {% if head %}
+    <div class="fieldset">
+      <span class="label-mono">Для руководителя</span>
+      <div class="fgrid three">
         <label class="field"><span class="label">Грейд</span><select class="select" name="grade"><option value="">—</option>{% for g in grades %}<option {{ 'selected' if g == m.grade }}>{{ g }}</option>{% endfor %}</select></label>
         <label class="field"><span class="label">Направление</span><select class="select" name="direction_id"><option value="">—</option>{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == m.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
         <label class="field"><span class="label">Группа</span><select class="select" name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if t.id == m.team_id }}>{{ t.title }}</option>{% endfor %}</select></label>
-        {% if not own %}<label class="field"><span class="label">Роль</span><select class="select" name="role">{% for k, v in roles.items() %}<option value="{{ k }}" {{ 'selected' if k == m.role }}>{{ v }}</option>{% endfor %}</select></label>{% endif %}
-        {% endif %}
-        <div><button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button></div>
-      </form>
-    </details>
+      </div>
+      {% if not own %}
+      <div class="field"><span class="label">Роли — можно несколько, человек переключается между ними</span>
+        <div class="tag-pick">{% for k, v in roles.items() if k != 'pending' %}<label class="tag-toggle"><input type="checkbox" name="roles" value="{{ k }}" {{ 'checked' if k in member_roles }}><span>{{ v }}</span></label>{% endfor %}</div></div>
+      {% endif %}
+    </div>
     {% endif %}
-  </div>
-</div>
+  </form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="profile-form">{{ icon('check', 15) }}Сохранить</button></div>
+</dialog>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}Уведомления — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Колокольчик</span>
+    <h1>Уведомления</h1>
+    <p class="sub">Новые задачи, комментарии, сроки и блокеры. Письма можно отключить в профиле — здесь они остаются всегда.</p>
+  </div>
+</div>
+<div class="panel">
+  {% for n in rows %}
+  <a class="notice-row {{ 'new' if not n.read_at }}" href="{{ n.link or '#' }}">
+    <span class="badge app-badge" style="width: 34px; height: 34px; {{ '--tone: var(--danger)' if n.kind in ('deadline', 'blocker') }}">{{ icon({'task': 'board', 'deadline': 'clock', 'blocker': 'flag', 'ai': 'spark'}.get(n.kind, 'bell'), 16) }}</span>
+    <span class="grow"><b class="small" style="font-weight: {{ 600 if not n.read_at else 500 }}">{{ n.text }}</b><span>{{ n.created_at.strftime('%d.%m %H:%M') }}</span></span>
+  </a>
+  {% else %}<div class="empty">Уведомлений пока нет.</div>{% endfor %}
+</div>
+{% endblock %}

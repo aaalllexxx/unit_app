@@ -6,10 +6,15 @@
 назначает роль. Администраторы UNIT сразу становятся руководителями лаборатории.
 
 Кто что видит:
-    head      — всё; назначает роли, правит направления
+    head      — всё; назначает роли, правит направления, настраивает ИИ
     lead      — открытые проекты и проекты своего направления; ведёт проекты
     member    — открытые проекты и закрытые, где он в команде
     customer  — только свои проекты: готовность, части, журнал «для заказчика»
+
+У человека может быть несколько ролей (например, руководитель направления и
+заказчик соседнего проекта): портал показывает данные выбранной роли, а
+переключатель — в меню профиля. Модули: desk.py — рабочий стол, assist.py —
+ИИ-помощник, control.py — сигналы и контроль выполнения.
 """
 
 import base64
@@ -90,7 +95,6 @@ def guard():
                                                               urllib.parse.urlsplit(origin).netloc != request.host):
             abort(403)
     person = me()
-    g.me = person
     if person:
         now = datetime.now()
         if not person.last_seen or now - person.last_seen > timedelta(minutes=5):
@@ -101,6 +105,15 @@ def guard():
             else:
                 db().add(M.Visit(member_id=person.id, day=now.date()))
             db().commit()
+        # Активная роль: карточку отцепляем от сессии базы, чтобы подмена роли
+        # на время запроса не записалась в базу при чужом commit
+        granted = person.all_roles()
+        db().expunge(person)
+        person.base_role, person.granted = person.role, granted
+        wanted = session.get("as_role")
+        if wanted in granted:
+            person.role = wanted
+    g.me = person
 
 
 @app.after_request
@@ -205,10 +218,23 @@ def project_or_404(pid, edit=False):
 
 
 # ─── Уведомления по почте ───────────────────────────────────────────────────
-def notify(member_id: str, subject: str, text: str, link: str = "") -> None:
-    """Письмо человеку (в фоне). Без настроенного SMTP — молча пропускаем."""
+def notice(member_id: str, text: str, link: str = "", kind: str = "info", key: str = "") -> None:
+    """Уведомление в портале (колокольчик). С key — не чаще одного на ключ."""
+    if not member_id or member_id == getattr(g.get("me"), "id", None):
+        return
+    key = key or f"{kind}:{datetime.now().timestamp():.6f}"
+    if db().scalar(select(M.Notice.id).where(M.Notice.member_id == member_id, M.Notice.key == key)):
+        return
+    db().add(M.Notice(member_id=member_id, key=key[:120], kind=kind, text=text[:400], link=link[:300]))
+    db().commit()
+
+
+def notify(member_id: str, subject: str, text: str, link: str = "", kind: str = "info", key: str = "") -> None:
+    """Уведомление в портале и письмо (в фоне). Без настроенного SMTP — только в портале."""
     person = db().get(M.Member, member_id) if member_id else None
-    if not SMTP_HOST or not person or not person.email or not person.notify_email or person.id == getattr(g.me, "id", None):
+    if person and person.id != getattr(g.get("me"), "id", None):
+        notice(person.id, subject, link, kind, key)
+    if not SMTP_HOST or not person or not person.email or not person.notify_email or person.id == getattr(g.get("me"), "id", None):
         return
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = MAIL_FROM, person.email, subject
@@ -231,6 +257,9 @@ def _post(url, data, auth=None):
         req.add_header("Authorization", "Basic " + base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode())
     with urllib.request.urlopen(req, timeout=20) as response:
         return json.loads(response.read().decode())
+
+
+LAB_TAG = "лаборатория"
 
 
 @app.route("/login")
@@ -265,16 +294,20 @@ def callback():
         print(f"[auth] {error}", flush=True)
         return render_template("message.html", title="Вход не удался",
                                text="UNIT ID не ответил. Попробуйте через минуту."), 502
+    tags = info.get("unit_tags") or []
     person = db().get(M.Member, info["sub"])
     if person is None:
         first = not db().scalar(select(func.count()).select_from(M.Member))
         admin = "admin" in (info.get("unit_roles") or [])
+        # Аккаунт UNIT с тегом «лаборатория» — сразу сотрудник, остальные ждут подтверждения
         person = M.Member(id=info["sub"], name=info.get("name") or "Без имени", email=info.get("email") or "",
-                          role="head" if (first or admin) else "pending")
+                          role="head" if (first or admin) else "member" if LAB_TAG in tags else "pending")
         db().add(person)
     else:
         person.name = info.get("name") or person.name
         person.email = info.get("email") or person.email
+        if person.role == "pending" and LAB_TAG in tags:
+            person.role = "member"
     db().commit()
     session.clear()
     session.permanent = True
@@ -303,10 +336,23 @@ def landing():
     return render_template("landing.html", showcase=showcase, directions=directions, people=people)
 
 
-# ─── Главная сотрудника ─────────────────────────────────────────────────────
+# ─── «Сегодня»: главная сотрудника ──────────────────────────────────────────
+def _task_bucket(task) -> str:
+    today = date.today()
+    if task.due and task.due < today:
+        return "late"
+    if task.due and task.due == today:
+        return "today"
+    if task.due and task.due <= today + timedelta(days=6 - today.weekday()):
+        return "week"
+    return "later"
+
+
 @app.route("/home")
 @need()
 def home():
+    import control
+
     person = g.me
     projects = visible_projects(person)
     mine = [p for p in projects if person.id in team_ids(p.id) or p.lead_id == person.id] or \
@@ -314,17 +360,36 @@ def home():
     cards = []
     for p in mine[:12]:
         parts = db().scalars(select(M.Part).where(M.Part.project_id == p.id)).all()
-        cards.append({"p": p, "percent": project_percent(parts), "phases": phase_summary(parts)})
-    tasks = db().scalars(select(M.Task).where(M.Task.assignee_id == person.id, M.Task.column != "done")
-                         .order_by(M.Task.due.is_(None), M.Task.due)).all()
-    week_start = date.today() - timedelta(days=date.today().weekday())
-    hours = db().scalar(select(func.coalesce(func.sum(M.TimeEntry.hours), 0)).where(
-        M.TimeEntry.member_id == person.id, M.TimeEntry.day >= week_start))
+        pct = project_percent(parts)
+        cards.append({"p": p, "percent": pct, "phases": phase_summary(parts), "health": control.project_health(p, pct)})
     names = {p.id: p.title for p in projects}
+    if person.role == "customer":
+        news = db().scalars(select(M.Update).where(M.Update.project_id.in_([c["p"].id for c in cards] or [0]),
+                                                   M.Update.for_customer.is_(True))
+                            .order_by(M.Update.created_at.desc()).limit(10)).all()
+        return render_template("home.html", cards=cards, names=names, news=news, customer=True)
+    tasks = db().scalars(select(M.Task).where(M.Task.assignee_id == person.id, M.Task.column != "done")
+                         .order_by(M.Task.due.is_(None), M.Task.due, M.Task.priority)).all()
+    buckets = {"late": [], "today": [], "week": [], "later": []}
+    for t in tasks:
+        buckets[_task_bucket(t)].append(t)
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week = [week_start + timedelta(days=i) for i in range(7)]
+    rows = db().execute(select(M.TimeEntry.day, func.sum(M.TimeEntry.hours)).where(
+        M.TimeEntry.member_id == person.id, M.TimeEntry.day >= week_start).group_by(M.TimeEntry.day)).all()
+    per_day = {d: 0.0 for d in week}
+    per_day.update({d: float(h or 0) for d, h in rows})
     online = db().scalars(select(M.Member).where(M.Member.last_seen >= datetime.now() - timedelta(minutes=15),
                                                  M.Member.role.in_(STAFF))).all()
-    return render_template("home.html", cards=cards, tasks=tasks, hours=hours, names=names, online=online,
-                           columns=dict(M.TASK_COLUMNS))
+    pinned = db().scalars(select(M.DeskItem).where(M.DeskItem.member_id == person.id, M.DeskItem.pinned.is_(True))
+                          .order_by(M.DeskItem.updated_at.desc()).limit(4)).all()
+    checkin_today = db().scalar(select(M.Checkin).where(M.Checkin.member_id == person.id, M.Checkin.day == date.today()))
+    brief = db().get(M.Setting, f"brief:{person.id}:{date.today()}")
+    return render_template("home.html", cards=cards, names=names, customer=False, tasks=tasks, buckets=buckets,
+                           per_day=per_day, hours=sum(per_day.values()), top=max(list(per_day.values()) + [8]),
+                           online=online, pinned=pinned, checkin=checkin_today, columns=dict(M.TASK_COLUMNS),
+                           signals=control.signals_for(person)[:6], brief=brief.value if brief else "",
+                           kinds=M.DESK_KINDS)
 
 
 # ─── Люди ───────────────────────────────────────────────────────────────────
@@ -348,6 +413,28 @@ def people():
     return render_template("people.html", rows=rows, dirs=dirs, teams=teams, acts=acts, active=direction)
 
 
+def _skills_from(form) -> list:
+    """Навыки из формы: чипы «Python|4» или строки «Python — 4»."""
+    raw = form.getlist("skill") or form.get("skills", "").splitlines()
+    out, seen = [], set()
+    for line in raw:
+        name, sep, level = line.partition("|") if "|" in line else line.partition("—")
+        name = name.strip()[:60]
+        if not name or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        level = level.strip()
+        out.append({"name": name, "level": max(1, min(5, int(level))) if level.isdigit() else 3})
+    return out[:30]
+
+
+def set_roles(member, wanted) -> None:
+    """Роли человека: основная — самая старшая из выданных."""
+    granted = [r for r in M.ROLE_ORDER if r in set(wanted) and r != "pending"]
+    if granted:
+        member.roles, member.role = granted, granted[0]
+
+
 @app.route("/people/<mid>", methods=["GET", "POST"])
 @need(*STAFF)
 def person(mid):
@@ -363,19 +450,13 @@ def person(mid):
         member.about = f.get("about", "").strip()[:2000]
         member.contacts = {"telegram": f.get("telegram", "").strip()[:60], "phone": f.get("phone", "").strip()[:30]}
         member.notify_email = f.get("notify_email") == "1"
-        skills = []
-        for line in f.get("skills", "").splitlines():
-            name, _, level = line.partition("—")
-            if name.strip():
-                skills.append({"name": name.strip()[:60], "level": max(1, min(5, int(level.strip() or 3)))
-                               if level.strip().isdigit() else 3})
-        member.skills = skills[:30]
+        member.skills = _skills_from(f)
         if head:
             member.grade = f.get("grade", "") if f.get("grade", "") in M.GRADES else ""
             member.direction_id = int(f["direction_id"]) if f.get("direction_id", "").isdigit() else None
             member.team_id = int(f["team_id"]) if f.get("team_id", "").isdigit() else None
-            if f.get("role") in M.ROLES and member.id != g.me.id:
-                member.role = f["role"]
+            if member.id != g.me.id and f.getlist("roles"):
+                set_roles(member, f.getlist("roles"))
         db().commit()
         flash("Профиль сохранён", "ok")
         return redirect(url_for("person", mid=mid))
@@ -385,13 +466,22 @@ def person(mid):
     since = date.today() - timedelta(days=83)
     visits = {v.day: v.hits for v in db().scalars(select(M.Visit).where(M.Visit.member_id == mid, M.Visit.day >= since))}
     grid = [{"day": since + timedelta(days=i), "hits": visits.get(since + timedelta(days=i), 0)} for i in range(84)]
-    open_tasks = db().scalar(select(func.count()).select_from(M.Task).where(M.Task.assignee_id == mid, M.Task.column != "done"))
+    open_tasks = db().scalars(select(M.Task).where(M.Task.assignee_id == mid, M.Task.column != "done")
+                              .order_by(M.Task.due.is_(None), M.Task.due)).all()
     done30 = db().scalar(select(func.count()).select_from(M.Task).where(
         M.Task.assignee_id == mid, M.Task.done_at >= datetime.now() - timedelta(days=30)))
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    hours = db().scalar(select(func.coalesce(func.sum(M.TimeEntry.hours), 0)).where(
+        M.TimeEntry.member_id == mid, M.TimeEntry.day >= week_start))
+    see_checkins = own or g.me.role in ("head", "lead")
+    checkins = db().scalars(select(M.Checkin).where(M.Checkin.member_id == mid).order_by(M.Checkin.day.desc())
+                            .limit(5)).all() if see_checkins else []
     return render_template("person.html", m=member, own=own, head=head, projects=projects, grid=grid,
-                           act=activity(mid), open_tasks=open_tasks, done30=done30,
+                           act=activity(mid), open_tasks=open_tasks, done30=done30, hours=hours, checkins=checkins,
+                           names={p.id: p.title for p, _ in projects},
                            dirs=db().scalars(select(M.Direction)).all(), teams=db().scalars(select(M.Team)).all(),
-                           grades=M.GRADES, roles=M.ROLES)
+                           grades=M.GRADES, roles=M.ROLES, member_roles=member.all_roles(),
+                           open_edit=own and not member.position and not member.skills)
 
 
 # ─── Направления ────────────────────────────────────────────────────────────
@@ -430,6 +520,7 @@ def projects():
             abort(403)
         f = request.form
         p = M.Project(title=f.get("title", "").strip()[:200] or "Новый проект", summary=f.get("summary", "").strip()[:400],
+                      starts=date.today(),
                       direction_id=int(f["direction_id"]) if f.get("direction_id", "").isdigit() else g.me.direction_id,
                       lead_id=g.me.id, closed=f.get("closed") == "1")
         db().add(p)
@@ -444,8 +535,12 @@ def projects():
     info = {}
     for p in rows:
         parts = db().scalars(select(M.Part).where(M.Part.project_id == p.id)).all()
-        info[p.id] = {"percent": project_percent(parts), "phases": phase_summary(parts),
-                      "lead": db().get(M.Member, p.lead_id) if p.lead_id else None}
+        import control
+        pct = project_percent(parts)
+        info[p.id] = {"percent": pct, "phases": phase_summary(parts), "health": control.project_health(p, pct),
+                      "lead": db().get(M.Member, p.lead_id) if p.lead_id else None,
+                      "open": db().scalar(select(func.count()).select_from(M.Task).where(
+                          M.Task.project_id == p.id, M.Task.column != "done"))}
     dirs = {d.id: d for d in db().scalars(select(M.Direction))}
     return render_template("projects.html", rows=rows, info=info, dirs=dirs, statuses=M.STATUSES, active=status)
 
@@ -466,13 +561,21 @@ def project(pid):
         select(M.TimeEntry.member_id, func.sum(M.TimeEntry.hours)).where(M.TimeEntry.project_id == pid)
         .group_by(M.TimeEntry.member_id)).all()
     staff = db().scalars(select(M.Member).where(M.Member.role.in_(STAFF + ("customer",))).order_by(M.Member.name)).all()
+    comments = dict(db().execute(select(M.TaskComment.task_id, func.count()).where(
+        M.TaskComment.task_id.in_([t.id for t in tasks] or [0])).group_by(M.TaskComment.task_id)).all())
+    materials = [] if customer else db().scalars(select(M.DeskItem).where(
+        M.DeskItem.project_id == pid, (M.DeskItem.shared.is_(True)) | (M.DeskItem.member_id == g.me.id))
+        .order_by(M.DeskItem.updated_at.desc())).all()
+    import control
     return render_template("project.html", p=p, parts=parts, percent=project_percent(parts), phase_rows=phase_summary(parts),
                            part_percent=part_percent, phase_name=PHASE_NAME, all_phases=M.PHASES, team=team,
                            people=people, tasks=tasks, columns=M.TASK_COLUMNS, updates=db().scalars(updates_q).all(),
                            hours=hours, staff=staff, statuses=M.STATUSES, customer=customer,
                            editable=can_edit(g.me, p), member=is_team(g.me, p),
-                           dirs=db().scalars(select(M.Direction)).all(),
-                           total_hours=sum(h or 0 for _, h in hours))
+                           dirs=db().scalars(select(M.Direction)).all(), comments=comments, materials=materials,
+                           signals=[] if customer else control.project_signals(p, parts, tasks),
+                           health=control.project_health(p, project_percent(parts)),
+                           kinds=M.DESK_KINDS, total_hours=sum(h or 0 for _, h in hours))
 
 
 @app.route("/p/<int:pid>/edit", methods=["POST"])
@@ -583,9 +686,10 @@ def task_save(pid):
         task.title = f["title"].strip()[:300]
     if "about" in f:
         task.about = f["about"].strip()[:5000]
-    if f.get("column") in dict(M.TASK_COLUMNS):
-        task.column = f["column"]
-        task.done_at = datetime.now() if task.column == "done" else None
+    if f.get("column") in dict(M.TASK_COLUMNS) and f["column"] != task.column:
+        set_column(task, f["column"], p)
+    if f.get("priority", "").isdigit():
+        task.priority = max(1, min(3, int(f["priority"])))
     if f.get("phase") in PHASE_INDEX:
         task.phase = f["phase"]
     if "part_id" in f:
@@ -608,8 +712,101 @@ def task_save(pid):
     db().commit()
     if task.assignee_id and task.assignee_id != before:
         notify(task.assignee_id, f"Новая задача: {task.title}", f"Проект «{p.title}». Срок: {task.due or 'не указан'}.",
-               f"/p/{pid}#tasks")
+               f"/p/{pid}?task={task.id}#tasks", kind="task")
+    if request.accept_mimetypes.best == "application/json":
+        return {"ok": True, "id": task.id}
     return redirect(url_for("project", pid=pid) + "#tasks")
+
+
+def set_column(task, column: str, project) -> None:
+    """Задача переехала в другую колонку: время, отметка «готово», уведомление."""
+    task.column = column
+    task.moved_at = datetime.now()
+    task.done_at = datetime.now() if column == "done" else None
+    if column == "review" and project.lead_id and project.lead_id != getattr(g.me, "id", None):
+        notice(project.lead_id, f"На проверке: {task.title}", f"/p/{project.id}?task={task.id}#tasks", "task",
+               f"review:{task.id}:{task.moved_at:%Y%m%d%H%M}")
+
+
+def task_or_404(tid):
+    task = db().get(M.Task, tid)
+    if not task:
+        abort(404)
+    p = project_or_404(task.project_id)
+    if not is_team(g.me, p):
+        abort(403)
+    return task, p
+
+
+def _task_json(task) -> dict:
+    authors = {}
+    comments = []
+    for c in db().scalars(select(M.TaskComment).where(M.TaskComment.task_id == task.id).order_by(M.TaskComment.id)):
+        if c.author_id not in authors:
+            who = db().get(M.Member, c.author_id)
+            authors[c.author_id] = who.name if who else "—"
+        comments.append({"id": c.id, "author": authors[c.author_id], "mine": c.author_id == g.me.id,
+                         "at": c.created_at.strftime("%d.%m %H:%M"), "text": c.text})
+    return {"id": task.id, "title": task.title, "about": task.about, "column": task.column, "phase": task.phase,
+            "part_id": task.part_id or "", "assignee_id": task.assignee_id or "", "priority": task.priority or 2,
+            "estimate": ("%g" % task.estimate) if task.estimate else "", "due": task.due.isoformat() if task.due else "",
+            "checklist": task.checklist or [], "comments": comments, "project_id": task.project_id,
+            "created": task.created_at.strftime("%d.%m.%Y") if task.created_at else ""}
+
+
+@app.get("/api/task/<int:tid>")
+@need(*STAFF)
+def task_api(tid):
+    task, _ = task_or_404(tid)
+    return _task_json(task)
+
+
+@app.post("/api/task/<int:tid>/move")
+@need(*STAFF)
+def task_move(tid):
+    task, p = task_or_404(tid)
+    column = (request.get_json(silent=True) or request.form).get("column")
+    if column not in dict(M.TASK_COLUMNS):
+        return {"error": "Нет такой колонки"}, 400
+    if column != task.column:
+        set_column(task, column, p)
+        db().commit()
+    return {"ok": True, "column": task.column}
+
+
+@app.post("/api/task/<int:tid>/check")
+@need(*STAFF)
+def task_check(tid):
+    """Чек-лист задачи: отметить пункт, добавить, убрать."""
+    task, _ = task_or_404(tid)
+    data = request.get_json(silent=True) or {}
+    items = [dict(i) for i in (task.checklist or [])]
+    if data.get("add"):
+        for line in str(data["add"]).splitlines():
+            if line.strip():
+                items.append({"text": line.strip()[:200], "done": False})
+    elif isinstance(data.get("index"), int) and 0 <= data["index"] < len(items):
+        if data.get("remove"):
+            items.pop(data["index"])
+        else:
+            items[data["index"]]["done"] = bool(data.get("done"))
+    task.checklist = items[:60]
+    db().commit()
+    return {"ok": True, "checklist": task.checklist}
+
+
+@app.post("/api/task/<int:tid>/comment")
+@need(*STAFF)
+def task_comment(tid):
+    task, p = task_or_404(tid)
+    text = ((request.get_json(silent=True) or {}).get("text") or "").strip()[:3000]
+    if not text:
+        return {"error": "Пустой комментарий"}, 400
+    db().add(M.TaskComment(task_id=task.id, author_id=g.me.id, text=text))
+    db().commit()
+    for mid in {task.assignee_id, task.created_by, p.lead_id} - {None, "", g.me.id}:
+        notice(mid, f"{g.me.name} о задаче «{task.title}»: {text[:120]}", f"/p/{p.id}?task={task.id}#tasks", "task")
+    return _task_json(task)
 
 
 @app.route("/p/<int:pid>/update", methods=["POST"])
@@ -666,24 +863,161 @@ def timesheet():
     projects = [p for p in visible_projects(g.me) if is_team(g.me, p)]
     names = {p.id: p.title for p in visible_projects(g.me)}
     tasks = db().scalars(select(M.Task).where(M.Task.assignee_id == g.me.id, M.Task.column != "done")).all()
+    per_day = {d: sum(e.hours for e in entries if e.day == d) for d in days}
     return render_template("time.html", days=days, entries=entries, projects=projects, names=names, tasks=tasks,
-                           start=start, prev=start - timedelta(days=7), next=start + timedelta(days=7))
+                           start=start, prev=start - timedelta(days=7), next=start + timedelta(days=7),
+                           per_day=per_day, top=max(list(per_day.values()) + [8]),
+                           this_week=date.today() - timedelta(days=date.today().weekday()),
+                           timer=db().get(M.Timer, g.me.id))
+
+
+@app.post("/timer")
+@need(*STAFF)
+def timer():
+    """Таймер работы: запустил на задаче — остановил — часы записались сами."""
+    f, back = request.form, _back(request.form.get("next"), "/time")
+    running = db().get(M.Timer, g.me.id)
+    action = f.get("action")
+    if action == "start":
+        task = db().get(M.Task, int(f["task_id"])) if f.get("task_id", "").isdigit() else None
+        pid = task.project_id if task else int(f.get("project_id") or 0) if (f.get("project_id") or "").isdigit() else 0
+        project_ = project_or_404(pid)
+        if not is_team(g.me, project_):
+            abort(403)
+        if running:
+            _stop_timer(running)
+        db().add(M.Timer(member_id=g.me.id, project_id=project_.id, task_id=task.id if task else None,
+                         note=(f.get("note") or (task.title if task else "")).strip()[:300]))
+        if task and task.column == "todo":
+            set_column(task, "doing", project_)
+        db().commit()
+        flash("Таймер запущен", "ok")
+    elif action == "stop" and running:
+        hours = _stop_timer(running)
+        db().commit()
+        flash(f"Записано {hours:g} ч", "ok")
+    elif action == "cancel" and running:
+        db().delete(running)
+        db().commit()
+    return redirect(back)
+
+
+def _stop_timer(running) -> float:
+    spent = (datetime.now() - running.started_at).total_seconds() / 3600
+    hours = max(0.25, round(spent * 4) / 4)
+    db().add(M.TimeEntry(member_id=running.member_id, project_id=running.project_id, task_id=running.task_id,
+                         day=date.today(), hours=min(24, hours), note=running.note))
+    db().delete(running)
+    return hours
+
+
+def _back(url: str, default: str) -> str:
+    url = url or ""
+    return url if url.startswith("/") and not url.startswith("//") and "\\" not in url else default
+
+
+@app.post("/role")
+@need()
+def switch_role():
+    """Переключить активную роль (если ролей несколько)."""
+    wanted = request.form.get("role")
+    if wanted in g.me.granted:
+        session["as_role"] = wanted
+        flash(f"Вы в роли «{M.ROLES[wanted]}»", "ok")
+    return redirect(_back(request.form.get("next"), "/home") if wanted in ("head", "lead", "member") else "/home")
+
+
+@app.post("/checkin")
+@need(*STAFF)
+def checkin():
+    """Стендап: что сделал, что дальше, что мешает. Блокер сразу видят руководители."""
+    f = request.form
+    row = db().scalar(select(M.Checkin).where(M.Checkin.member_id == g.me.id, M.Checkin.day == date.today()))
+    if row is None:
+        row = M.Checkin(member_id=g.me.id, day=date.today())
+        db().add(row)
+    had = row.blockers
+    row.done, row.plan = f.get("done", "").strip()[:2000], f.get("plan", "").strip()[:2000]
+    row.blockers = f.get("blockers", "").strip()[:2000]
+    row.mood = max(1, min(5, int(f["mood"]))) if f.get("mood", "").isdigit() else 3
+    db().commit()
+    if row.blockers and row.blockers != had:
+        import control
+        for mid in control.leads_of(g.me):
+            notify(mid, f"{g.me.name}: мешает работать", row.blockers[:300], f"/pulse#checkins", kind="blocker",
+                   key=f"blocker:{g.me.id}:{date.today()}")
+    flash("Стендап записан", "ok")
+    return redirect(_back(f.get("next"), "/home"))
+
+
+@app.get("/notices")
+@need()
+def notices():
+    rows = db().scalars(select(M.Notice).where(M.Notice.member_id == g.me.id)
+                        .order_by(M.Notice.created_at.desc()).limit(80)).all()
+    page = render_template("notices.html", rows=rows)
+    for n in rows:
+        if n.read_at is None:
+            n.read_at = datetime.now()
+    db().commit()
+    return page
+
+
+@app.get("/api/notices")
+@need()
+def notices_api():
+    rows = db().scalars(select(M.Notice).where(M.Notice.member_id == g.me.id)
+                        .order_by(M.Notice.created_at.desc()).limit(8)).all()
+    unread = db().scalar(select(func.count()).select_from(M.Notice).where(
+        M.Notice.member_id == g.me.id, M.Notice.read_at.is_(None)))
+    return {"unread": unread, "items": [{"text": n.text, "link": n.link, "kind": n.kind, "new": n.read_at is None,
+                                         "at": n.created_at.strftime("%d.%m %H:%M")} for n in rows]}
+
+
+@app.post("/api/notices/read")
+@need()
+def notices_read():
+    for n in db().scalars(select(M.Notice).where(M.Notice.member_id == g.me.id, M.Notice.read_at.is_(None))):
+        n.read_at = datetime.now()
+    db().commit()
+    return {"ok": True}
+
+
+@app.post("/api/prefs")
+@need()
+def prefs():
+    """Настройки интерфейса человека: вибрация, вид задач."""
+    member = db().get(M.Member, g.me.id)
+    data = request.get_json(silent=True) or {}
+    current = dict(member.prefs or {})
+    for key in ("haptics", "board_view"):
+        if key in data:
+            current[key] = data[key]
+    member.prefs = current
+    db().commit()
+    return {"ok": True}
 
 
 # ─── Руководителю ───────────────────────────────────────────────────────────
 @app.route("/admin", methods=["GET", "POST"])
 @need("head")
 def admin():
+    """Обзор лаборатории: проекты, люди и роли, ИИ."""
+    import ai
+
     if request.method == "POST":
         member = db().get(M.Member, request.form.get("member_id", ""))
-        if member and member.id != g.me.id and request.form.get("role") in M.ROLES:
-            member.role = request.form["role"]
-            if request.form.get("company"):
-                member.company = request.form["company"].strip()[:160]
+        if member and member.id != g.me.id and request.form.getlist("roles"):
+            was = member.role
+            set_roles(member, request.form.getlist("roles"))
+            member.company = request.form.get("company", member.company or "").strip()[:160]
             db().commit()
-            if member.role != "pending":
-                notify(member.id, "Доступ к порталу лаборатории открыт", f"Ваша роль: {M.ROLES[member.role]}.", "/home")
-        return redirect(url_for("admin"))
+            if was == "pending" and member.role != "pending":
+                notify(member.id, "Доступ к порталу лаборатории открыт",
+                       "Ваши роли: " + ", ".join(M.ROLES[r] for r in member.all_roles()) + ".", "/home")
+            flash(f"Роли «{member.name}» сохранены", "ok")
+        return redirect(url_for("admin", tab="people"))
+    tab = request.args.get("tab") or "overview"
     members = db().scalars(select(M.Member).order_by(M.Member.role != "pending", M.Member.name)).all()
     week_start = date.today() - timedelta(days=date.today().weekday())
     load = {}
@@ -692,18 +1026,18 @@ def admin():
             "open": db().scalar(select(func.count()).select_from(M.Task).where(M.Task.assignee_id == m.id, M.Task.column != "done")),
             "hours": db().scalar(select(func.coalesce(func.sum(M.TimeEntry.hours), 0)).where(
                 M.TimeEntry.member_id == m.id, M.TimeEntry.day >= week_start)),
-            "days30": activity(m.id)["days30"]}
+            "days30": activity(m.id)["days30"],
+            "ai": db().scalar(select(func.coalesce(func.sum(M.AiUsage.requests), 0)).where(
+                M.AiUsage.member_id == m.id, M.AiUsage.day >= date.today() - timedelta(days=6)))}
+    import control
     projects = db().scalars(select(M.Project).where(M.Project.status == "active")).all()
     health = []
     for p in projects:
-        parts = db().scalars(select(M.Part).where(M.Part.project_id == p.id)).all()
-        pct = project_percent(parts)
-        late = bool(p.due and p.due < date.today() and pct < 100)
-        risk = bool(p.due and p.starts and not late and p.due > p.starts and
-                    (date.today() - p.starts).days / max(1, (p.due - p.starts).days) * 100 > pct + 20)
-        health.append({"p": p, "percent": pct, "state": "late" if late else "risk" if risk else "ok"})
-    return render_template("admin.html", members=members, roles=M.ROLES, load=load, health=health,
-                           dirs={d.id: d for d in db().scalars(select(M.Direction))})
+        pct = project_percent(db().scalars(select(M.Part).where(M.Part.project_id == p.id)).all())
+        health.append({"p": p, "percent": pct, "state": control.project_health(p, pct)})
+    return render_template("admin.html", tab=tab, members=members, roles=M.ROLES, load=load, health=health,
+                           dirs={d.id: d for d in db().scalars(select(M.Direction))}, ai_cfg=ai.settings(db()),
+                           ai_ready=ai.configured(db()), pending=[m for m in members if m.role == "pending"])
 
 
 @app.errorhandler(403)
@@ -755,7 +1089,20 @@ def healthz():
 
 @app.context_processor
 def common():
+    import ai
     me_ = getattr(g, "me", None)
-    nav_dirs = db().scalars(select(M.Direction).order_by(M.Direction.id)).all() if me_ and me_.role not in ("pending", "customer") else []
-    return {"me": me_, "roles": M.ROLES, "statuses": M.STATUSES, "today": date.today(), "nav_dirs": nav_dirs,
-            "issuer": ISSUER}
+    staff = bool(me_) and me_.role in STAFF
+    nav_dirs = db().scalars(select(M.Direction).order_by(M.Direction.id)).all() if staff else []
+    unread = db().scalar(select(func.count()).select_from(M.Notice).where(
+        M.Notice.member_id == me_.id, M.Notice.read_at.is_(None))) if me_ else 0
+    return {"me": me_, "roles": M.ROLES, "role_short": M.ROLE_SHORT, "statuses": M.STATUSES, "today": date.today(),
+            "nav_dirs": nav_dirs, "issuer": ISSUER, "unread": unread, "now_hour": datetime.now().hour,
+            "ai_on": bool(me_) and ai.allowed(db(), me_.role),
+            "running": db().get(M.Timer, me_.id) if staff else None,
+            "haptics": (me_.prefs or {}).get("haptics", True) if me_ else True}
+
+
+# Модули портала: рабочий стол, ИИ-помощник, контроль выполнения
+import assist  # noqa: E402,F401
+import control  # noqa: E402,F401
+import desk  # noqa: E402,F401

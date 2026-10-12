@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials, signal %}
+{% block title %}Пульс — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Контроль выполнения</span>
+    <h1>Пульс</h1>
+    <p class="sub">{% if me.role == 'head' %}Вся лаборатория{% elif me.role == 'lead' %}Ваше направление и проекты{% else %}Ваши проекты{% endif %}: что горит, как идут сроки, кто перегружен и что мешает.</p>
+  </div>
+</div>
+
+{% set red = signals|selectattr('level', 'equalto', 'red')|list|length %}
+<div class="stats">
+  <div class="stat"><span class="label-mono">Проектов</span><span class="value">{{ rows|length }}</span><span class="note">в зоне ответственности</span></div>
+  <div class="stat"><span class="label-mono">Горит</span><span class="value" style="color: {{ 'var(--danger)' if red else 'var(--ok)' }}">{{ red }}</span><span class="note">сигналов требуют действий</span></div>
+  <div class="stat"><span class="label-mono">Отстают</span><span class="value" style="color: var(--warn)">{{ rows|selectattr('health', 'in', ['risk', 'late'])|list|length }}</span><span class="note">проектов от графика</span></div>
+  <div class="stat"><span class="label-mono">Закрыто</span><span class="value">{{ flow|sum(attribute='done') }}</span><span class="note">задач за 2 недели</span></div>
+</div>
+
+<div class="today-grid">
+  <div class="stack">
+    {% if ai_on %}
+    <div class="brief">
+      <div class="brief-head"><span class="ai-mark">{{ icon('spark', 15) }}</span><b>Разбор от ИИ</b>
+        <button class="btn btn-quiet btn-sm spacer" type="button" data-brief="pulse" data-target="#pulse-brief">{{ icon('refresh', 14) }}{{ 'Обновить' if brief else 'Разобрать' }}</button></div>
+      <div id="pulse-brief" {% if brief %}data-md{% else %}class="small muted"{% endif %}>{{ brief or 'ИИ посмотрит на сигналы, сроки и загрузку и предложит план на неделю.' }}</div>
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <div class="panel-head"><h3>Сигналы</h3><span class="count-badge">{{ signals|length }}</span>
+        {% if ai_on and signals %}<button class="btn btn-quiet btn-sm spacer" type="button" data-ai-open data-ask="Посмотри на сигналы на «Пульсе» и предложи, как снять самые важные: конкретные действия с исполнителями и сроками.">{{ icon('spark', 14) }}Как снять</button>{% endif %}</div>
+      {% if signals %}<div class="signals">{% for s in signals %}{{ signal(s) }}{% endfor %}</div>
+      {% else %}<div class="all-good">{{ icon('check', 18) }}Всё идёт по плану — сигналов нет.</div>{% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h3>Проекты: готовность против времени</h3></div>
+      <div class="rows">
+        {% for r in rows %}
+        <a class="r" href="/p/{{ r.p.id }}" style="flex-wrap: wrap; row-gap: 8px">
+          <span class="grow small strong truncate" style="min-width: 160px">{{ r.p.title }}</span>
+          {% if r.late %}<span class="chip tone s-late">{{ r.late }} просроч.</span>{% endif %}
+          <span class="tiny faint">{{ r.open }} откр.</span>
+          <span style="flex: 0 0 180px; max-width: 100%" title="Готовность {{ r.percent }}%{% if r.elapsed is not none %}, прошло времени {{ r.elapsed }}%{% endif %}">
+            <span class="health-bar {{ r.health }}" style="display: block"><i style="width: {{ r.percent }}%"></i>{% if r.elapsed is not none %}<em style="left: calc({{ r.elapsed }}% - 1px)"></em>{% endif %}</span></span>
+          <span class="mono small right" style="width: 40px">{{ r.percent }}%</span>
+        </a>
+        {% else %}<div class="empty">Проектов нет.</div>{% endfor %}
+      </div>
+      <div class="panel-foot tiny faint">Полоса — готовность, чёрная метка — сколько прошло времени от начала до срока. Метка правее полосы — проект отстаёт.</div>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="panel">
+      <div class="panel-head"><h3>Поток задач</h3><span class="legend spacer"><span><i style="background: var(--ok)"></i>закрыто</span><span><i style="background: var(--accent-line)"></i>новых</span></span></div>
+      <div class="panel-body">
+        <div class="flow">{% for f in flow %}
+          <div title="{{ f.day.strftime('%d.%m') }}: закрыто {{ f.done }}, новых {{ f.new }}"><i class="new" style="height: {{ (f.new / flow_top * 100)|round|int }}%"></i><i class="done" style="height: {{ (f.done / flow_top * 100)|round|int }}%"></i><span>{{ f.day.day }}</span></div>
+        {% endfor %}</div>
+      </div>
+    </div>
+
+    {% if team %}
+    <div class="panel">
+      <div class="panel-head"><h3>Загрузка</h3><span class="tiny faint spacer">задачи · оценка · часы</span></div>
+      <div>
+        {% for m in team %}{% set l = load[m.id] %}
+        <a class="load-row" href="/people/{{ m.id }}" style="grid-template-columns: minmax(0, 1fr) auto">
+          <span class="row" style="gap: 10px; min-width: 0"><span class="avatar sm">{{ initials(m.name) }}</span><span class="truncate small strong">{{ m.name }}</span>
+            {% if l.state == 'over' %}<span class="chip tone s-paused" style="height: 20px">перегруз</span>{% elif l.late %}<span class="chip tone s-late" style="height: 20px">{{ l.late }} просроч.</span>{% endif %}</span>
+          <span class="mono tiny faint">{{ l.open }} · {{ '%g' % l.estimate }} ч · {{ '%g' % l.hours }} ч</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel" id="checkins">
+      <div class="panel-head"><h3>Стендапы сегодня</h3><span class="count-badge spacer">{{ checkins|length }} / {{ team|length }}</span></div>
+      <div class="rows">
+        {% for c in checkins %}
+        <div class="r" style="align-items: flex-start"><span class="avatar sm">{{ initials(names.get(c.member_id, '?')) }}</span>
+          <div class="grow stack-xs small"><b>{{ names.get(c.member_id, '') }} {{ ['😣', '😕', '🙂', '😊', '🚀'][(c.mood or 3) - 1] }}</b>
+            {% if c.plan %}<span class="muted">{{ c.plan }}</span>{% endif %}
+            {% if c.blockers %}<span style="color: var(--danger)"><b>Мешает:</b> {{ c.blockers }}</span>{% endif %}</div></div>
+        {% else %}<div class="empty">Сегодня стендапов ещё нет.</div>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

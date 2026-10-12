@@ -1,0 +1,641 @@
+/* Портал лаборатории: таймер, колокольчик, ИИ-помощник, задачи и канбан,
+   рабочий стол, навыки. Общее (листы, вкладки, вибрация) — в unit.js. */
+(function () {
+    'use strict';
+
+    var U = window.UNIT || { haptic: function () {}, toast: function () {}, openSheet: function () {}, closeSheet: function () {} };
+    var $ = function (sel, root) { return (root || document).querySelector(sel); };
+    var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+    function api(url, data, method) {
+        var opts = { method: method || (data === undefined ? 'GET' : 'POST'), credentials: 'same-origin',
+                     headers: { 'Accept': 'application/json' } };
+        if (data instanceof FormData) {
+            opts.body = data;
+        } else if (data !== undefined) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(data);
+        }
+        return fetch(url, opts).then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (body) {
+                if (!r.ok) throw new Error(body.error || 'Не получилось — попробуйте ещё раз');
+                return body;
+            });
+        });
+    }
+    function esc(text) {
+        return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function icon(name, size) {
+        size = size || 16;
+        return '<svg class="ic" width="' + size + '" height="' + size + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+    }
+    function fail(error) { U.toast(error.message || String(error), 'err'); U.haptic('error'); }
+
+    /* ── Разметка ответов ИИ: **жирный**, `код`, ```блоки```, списки, ### ── */
+    function inline(text) {
+        return text.replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+            .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<i>$2</i>')
+            .replace(/\[([^\]]+)\]\((\/[^)\s]*|https?:\/\/[^)\s]+)\)/g, '<a href="$2" class="strong" style="color: var(--accent)">$1</a>');
+    }
+    function md(source) {
+        var out = [], list = null, code = null;
+        var flush = function () { if (list) { out.push('</' + list + '>'); list = null; } };
+        String(source || '').split('\n').forEach(function (raw) {
+            if (code !== null) {
+                if (/^```/.test(raw.trim())) { out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>'); code = null; }
+                else code.push(raw);
+                return;
+            }
+            if (/^```/.test(raw.trim())) { flush(); code = []; return; }
+            var line = esc(raw);
+            var m;
+            if ((m = line.match(/^\s*#{1,4}\s+(.*)$/))) { flush(); out.push('<h4>' + inline(m[1]) + '</h4>'); return; }
+            if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) {
+                if (list !== 'ul') { flush(); out.push('<ul>'); list = 'ul'; }
+                out.push('<li>' + inline(m[1]) + '</li>');
+                return;
+            }
+            if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
+                if (list !== 'ol') { flush(); out.push('<ol>'); list = 'ol'; }
+                out.push('<li>' + inline(m[1]) + '</li>');
+                return;
+            }
+            flush();
+            if (line.trim()) out.push('<p>' + inline(line) + '</p>');
+        });
+        if (code !== null) out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>');
+        flush();
+        return out.join('');
+    }
+    window.LAB = { md: md, api: api };
+    $$('[data-md]').forEach(function (el) { el.innerHTML = md(el.textContent); el.classList.add('md'); });
+
+    /* ── Таймер в шапке ───────────────────────────────────────────────────── */
+    $$('[data-timer]').forEach(function (pill) {
+        var start = new Date(pill.getAttribute('data-timer'));
+        var text = $('[data-timer-text]', pill);
+        var tick = function () {
+            var s = Math.max(0, Math.floor((Date.now() - start) / 1000));
+            text.textContent = Math.floor(s / 3600) + ':' + ('0' + Math.floor(s % 3600 / 60)).slice(-2) + ':' + ('0' + s % 60).slice(-2);
+        };
+        tick();
+        setInterval(tick, 1000);
+    });
+
+    /* ── Колокольчик: новые уведомления без перезагрузки ──────────────────── */
+    var bell = $('[data-bell]');
+    if (bell) {
+        var seen = Number(($('.dot-badge', bell) || {}).textContent || 0);
+        setInterval(function () {
+            if (document.hidden) return;
+            api('/api/notices').then(function (data) {
+                var badge = $('.dot-badge', bell);
+                if (data.unread && !badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'dot-badge';
+                    bell.appendChild(badge);
+                }
+                if (badge) {
+                    if (data.unread) badge.textContent = data.unread > 99 ? '99+' : data.unread; else badge.remove();
+                }
+                if (data.unread > seen && data.items && data.items[0]) {
+                    U.haptic('success');
+                    U.toast(data.items[0].text);
+                }
+                seen = data.unread;
+            }).catch(function () {});
+        }, 60000);
+    }
+
+    /* ── Вибрация: переключатель в «Ещё» ──────────────────────────────────── */
+    $$('[data-haptics-toggle]').forEach(function (box) {
+        box.addEventListener('change', function () {
+            U.setHaptics(box.checked);
+            api('/api/prefs', { haptics: box.checked }).catch(function () {});
+        });
+    });
+
+    /* ── ИИ-помощник ──────────────────────────────────────────────────────── */
+    function pageThread() {
+        var holder = $('[data-ai-thread]');
+        return holder ? holder.getAttribute('data-ai-thread') : 'me';
+    }
+    function Chat(box) {
+        this.box = box;
+        this.log = $('[data-chat-log]', box);
+        this.empty = $('[data-chat-empty]', box);
+        this.form = $('[data-chat-form]', box);
+        this.area = $('textarea', this.form);
+        this.thread = box.getAttribute('data-thread') || pageThread();
+        this.item = box.getAttribute('data-item') || '';
+        this.busy = false;
+        this.loaded = false;
+        var self = this;
+        this.form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            self.send(self.area.value);
+        });
+        this.area.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && window.matchMedia('(pointer: fine)').matches) {
+                event.preventDefault();
+                self.send(self.area.value);
+            }
+        });
+        box.addEventListener('click', function (event) {
+            var chip = event.target.closest('[data-ask]');
+            if (chip) { self.send(chip.getAttribute('data-ask')); return; }
+            var apply = event.target.closest('[data-apply]');
+            if (apply) self.apply(apply);
+            var clear = event.target.closest('[data-chat-clear]');
+            if (clear && window.confirm('Очистить разговор?')) {
+                api('/api/ai/clear', { thread: self.thread }).then(function () {
+                    $$('.msg', self.log).forEach(function (m) { m.remove(); });
+                    if (self.empty) self.empty.hidden = false;
+                });
+            }
+        });
+    }
+    Chat.prototype.load = function () {
+        var self = this;
+        if (this.loaded) return Promise.resolve();
+        this.loaded = true;
+        return api('/api/ai/history?thread=' + encodeURIComponent(this.thread)).then(function (data) {
+            self.thread = data.thread;
+            data.messages.forEach(function (m) { self.render(m); });
+            self.scroll();
+        }).catch(fail);
+    };
+    Chat.prototype.scroll = function () { this.log.scrollTop = this.log.scrollHeight; };
+    Chat.prototype.render = function (m, holder) {
+        if (this.empty) this.empty.hidden = true;
+        var el = holder || document.createElement('div');
+        el.className = 'msg ' + (m.role === 'user' ? 'user' : 'ai');
+        el.setAttribute('data-id', m.id || '');
+        if (m.role === 'user') {
+            el.innerHTML = '<div><div class="bubble">' + esc(m.text) + '</div></div>';
+        } else {
+            var acts = (m.actions || []).map(function (a, i) {
+                var state = a.applied ? ' is-done' : a.error ? ' is-bad' : '';
+                return '<div class="ai-act' + state + '"><span class="grow"><span>' + esc(a.label) + '</span><b>' + esc(a.title) + '</b>'
+                    + (a.meta || a.error ? '<small>' + esc(a.error || a.meta) + '</small>' : '') + '</span>'
+                    + (a.applied ? '<span class="chip tone s-active">' + icon('check', 13) + 'Готово</span>'
+                        : '<button class="btn btn-accent btn-sm" type="button" data-apply="' + i + '" data-msg="' + m.id + '">Применить</button>')
+                    + '</div>';
+            }).join('');
+            var many = (m.actions || []).filter(function (a) { return !a.applied; }).length > 1;
+            el.innerHTML = '<span class="ai-mark" style="width: 26px; height: 26px; border-radius: 8px">' + icon('spark', 14) + '</span>'
+                + '<div class="bubble"><div class="md">' + md(m.text) + '</div>'
+                + (acts ? '<div class="ai-acts">' + acts + (many ? '<button class="btn btn-ghost btn-sm" type="button" data-apply="all" data-msg="' + m.id + '">Применить всё</button>' : '') + '</div>' : '')
+                + (m.at ? '<div class="when">' + esc(m.at) + '</div>' : '') + '</div>';
+        }
+        if (!holder) this.log.appendChild(el);
+        return el;
+    };
+    Chat.prototype.send = function (text) {
+        var self = this;
+        text = (text || '').trim();
+        if (!text || this.busy) return;
+        this.busy = true;
+        this.area.value = '';
+        if (U.autosize) U.autosize(this.area);
+        this.render({ role: 'user', text: text });
+        var answer = this.render({ role: 'assistant', text: '' });
+        var bubble = $('.bubble', answer);
+        bubble.classList.add('typing');
+        this.scroll();
+        U.haptic('tap');
+        var acc = '';
+        fetch('/api/ai/chat', { method: 'POST', credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ text: text, thread: this.thread, item_id: this.item }) })
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (b) { throw new Error(b.error || 'ИИ недоступен'); });
+                var reader = r.body.getReader(), decoder = new TextDecoder(), buffer = '';
+                var pump = function () {
+                    return reader.read().then(function (step) {
+                        if (step.done) return;
+                        buffer += decoder.decode(step.value, { stream: true });
+                        var chunks = buffer.split('\n\n');
+                        buffer = chunks.pop();
+                        chunks.forEach(function (chunk) {
+                            var line = chunk.replace(/^data:\s*/, '');
+                            if (!line) return;
+                            var event;
+                            try { event = JSON.parse(line); } catch (e) { return; }
+                            if (event.delta) {
+                                acc += event.delta;
+                                $('.md', bubble).innerHTML = md(acc.replace(/```actions[\s\S]*$/, ''));
+                                self.scroll();
+                            }
+                            if (event.error) throw new Error(event.error);
+                            if (event.done) {
+                                self.render(event.message, answer);
+                                U.haptic(event.message.actions.length ? 'success' : 'tap');
+                                self.scroll();
+                            }
+                        });
+                        return pump();
+                    });
+                };
+                return pump();
+            })
+            .catch(function (error) {
+                $('.md', bubble).innerHTML = '<p style="color: var(--danger)">' + esc(error.message) + '</p>';
+                U.haptic('error');
+            })
+            .then(function () {
+                bubble.classList.remove('typing');
+                self.busy = false;
+            });
+    };
+    Chat.prototype.apply = function (button) {
+        var self = this;
+        var id = Number(button.getAttribute('data-msg'));
+        var which = button.getAttribute('data-apply');
+        var indexes = which === 'all'
+            ? $$('[data-apply]:not([data-apply="all"])', button.closest('.ai-acts')).map(function (b) { return Number(b.getAttribute('data-apply')); })
+            : [Number(which)];
+        button.disabled = true;
+        var chain = Promise.resolve(), done = 0;
+        indexes.forEach(function (index) {
+            chain = chain.then(function () {
+                return api('/api/ai/apply', { message_id: id, index: index }).then(function (result) {
+                    done += 1;
+                    var b = $('[data-apply="' + index + '"][data-msg="' + id + '"]', self.log);
+                    if (b) {
+                        var card = b.closest('.ai-act');
+                        card.classList.add('is-done');
+                        b.outerHTML = result.link ? '<a class="chip tone s-active" href="' + esc(result.link) + '">' + icon('check', 13) + esc(result.text) + '</a>'
+                            : '<span class="chip tone s-active">' + icon('check', 13) + 'Готово</span>';
+                    }
+                }).catch(function (error) {
+                    var b = $('[data-apply="' + index + '"][data-msg="' + id + '"]', self.log);
+                    if (b) { b.disabled = false; b.closest('.ai-act').classList.add('is-bad'); }
+                    fail(error);
+                });
+            });
+        });
+        chain.then(function () {
+            if (which === 'all') button.remove();
+            if (done) { U.haptic('success'); U.toast(done > 1 ? 'Применено: ' + done : 'Применено'); }
+        });
+    };
+    var chats = $$('[data-chat]').map(function (box) { return new Chat(box); });
+    var pageChat = chats.filter(function (c) { return !c.box.closest('dialog'); })[0];
+    if (pageChat) {
+        pageChat.load().then(function () {
+            var ask = pageChat.box.getAttribute('data-ask');
+            if (ask) pageChat.send(ask);
+        });
+    }
+    var sheetChat = chats.filter(function (c) { return c.box.closest('#ai-sheet'); })[0];
+    document.addEventListener('click', function (event) {
+        var opener = event.target.closest('[data-ai-open]');
+        if (!opener || !sheetChat) return;
+        event.preventDefault();
+        var thread = opener.getAttribute('data-thread') || pageThread();
+        if (thread !== sheetChat.thread) {
+            sheetChat.thread = thread;
+            sheetChat.loaded = false;
+            $$('.msg', sheetChat.log).forEach(function (m) { m.remove(); });
+            if (sheetChat.empty) sheetChat.empty.hidden = false;
+        }
+        sheetChat.item = opener.getAttribute('data-item') || '';
+        U.openSheet('ai-sheet');
+        sheetChat.load().then(function () {
+            var ask = opener.getAttribute('data-ask');
+            if (ask) sheetChat.send(ask);
+            else if (window.matchMedia('(pointer: fine)').matches) sheetChat.area.focus();
+        });
+    });
+
+    /* ── Сводки ИИ (дня и «Пульса») ───────────────────────────────────────── */
+    $$('[data-brief]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var target = $(button.getAttribute('data-target'));
+            button.disabled = true;
+            var was = button.innerHTML;
+            button.innerHTML = '<span class="live-dot"></span>Думаю…';
+            api('/api/ai/brief', { scope: button.getAttribute('data-brief') }).then(function (data) {
+                target.innerHTML = md(data.text);
+                target.classList.add('md');
+                target.hidden = false;
+                U.haptic('success');
+            }).catch(fail).then(function () {
+                button.disabled = false;
+                button.innerHTML = was;
+            });
+        });
+    });
+
+    /* ── Задачи: отметить сделанной одним касанием ────────────────────────── */
+    document.addEventListener('click', function (event) {
+        var box = event.target.closest('[data-task-done]');
+        if (!box) return;
+        var row = box.closest('.task-row');
+        var done = !box.classList.contains('done');
+        box.classList.toggle('done', done);
+        if (row) row.classList.toggle('is-done', done);
+        U.haptic(done ? 'success' : 'tap');
+        api('/api/task/' + box.getAttribute('data-task-done') + '/move', { column: done ? 'done' : (box.getAttribute('data-was') || 'doing') })
+            .then(function () { if (done) U.toast('Задача закрыта'); })
+            .catch(function (error) { box.classList.toggle('done', !done); fail(error); });
+    });
+
+    /* ── Канбан: перетаскивание, быстрый перенос, лист задачи ─────────────── */
+    var board = $('[data-board]');
+    if (board) {
+        var drag = null;
+        var colAt = function (x, y) {
+            var el = document.elementFromPoint(x, y);
+            return el && el.closest('[data-col]');
+        };
+        var counts = function () {
+            $$('[data-col]', board).forEach(function (col) {
+                var c = $('[data-col-count]', col);
+                if (c) c.textContent = $$('.task-card', col).length;
+            });
+        };
+        board.addEventListener('pointerdown', function (event) {
+            var card = event.target.closest('.task-card');
+            if (!card || event.button > 0) return;
+            drag = { card: card, x: event.clientX, y: event.clientY, id: event.pointerId, live: false, touch: event.pointerType !== 'mouse' };
+            drag.timer = setTimeout(function () { if (drag && drag.touch) start(); }, 320);
+        });
+        var start = function () {
+            if (!drag || drag.live) return;
+            drag.live = true;
+            var r = drag.card.getBoundingClientRect();
+            drag.ghost = drag.card.cloneNode(true);
+            drag.ghost.classList.add('task-ghost');
+            drag.ghost.style.width = r.width + 'px';
+            drag.dx = drag.x - r.left;
+            drag.dy = drag.y - r.top;
+            document.body.appendChild(drag.ghost);
+            drag.card.classList.add('dragging');
+            move(drag.x, drag.y);
+            U.haptic('lift');
+        };
+        var move = function (x, y) {
+            drag.ghost.style.left = (x - drag.dx) + 'px';
+            drag.ghost.style.top = (y - drag.dy) + 'px';
+            var col = colAt(x, y);
+            $$('[data-col]', board).forEach(function (c) { c.classList.toggle('drop-on', c === col); });
+            if (col !== drag.over && col) U.haptic('select');
+            drag.over = col;
+        };
+        document.addEventListener('pointermove', function (event) {
+            if (!drag) return;
+            var far = Math.abs(event.clientX - drag.x) + Math.abs(event.clientY - drag.y) > 8;
+            if (!drag.live) {
+                if (far && drag.touch) { clearTimeout(drag.timer); drag = null; return; }   // это прокрутка
+                if (far && !drag.touch) start(); else return;
+            }
+            event.preventDefault();
+            move(event.clientX, event.clientY);
+        }, { passive: false });
+        var finish = function (event) {
+            if (!drag) return;
+            clearTimeout(drag.timer);
+            var d = drag;
+            drag = null;
+            if (!d.live) return;                                   // простое касание — откроется лист
+            d.ghost.remove();
+            d.card.classList.remove('dragging');
+            $$('[data-col]', board).forEach(function (c) { c.classList.remove('drop-on'); });
+            d.card.setAttribute('data-dragged', '1');
+            setTimeout(function () { d.card.removeAttribute('data-dragged'); }, 50);
+            var col = event.type === 'pointerup' ? colAt(event.clientX, event.clientY) : null;
+            if (!col || col === d.card.closest('[data-col]')) return;
+            var list = $('[data-col-list]', col);
+            list.insertBefore(d.card, list.firstChild);
+            counts();
+            U.haptic('drop');
+            api('/api/task/' + d.card.getAttribute('data-task') + '/move', { column: col.getAttribute('data-col') })
+                .then(function () { if (col.getAttribute('data-col') === 'done') { U.haptic('success'); U.toast('Готово!'); } })
+                .catch(function (error) { fail(error); location.reload(); });
+        };
+        document.addEventListener('pointerup', finish);
+        document.addEventListener('pointercancel', finish);
+        board.addEventListener('contextmenu', function (event) { if (event.target.closest('.task-card')) event.preventDefault(); });
+    }
+
+    var taskSheet = $('#task-sheet');
+    function openTask(id) {
+        if (!taskSheet) return;
+        api('/api/task/' + id).then(function (t) {
+            var form = $('form[data-task-form]', taskSheet);
+            form.reset();
+            $('[name=task_id]', form).value = t.id;
+            ['title', 'about', 'column', 'phase', 'part_id', 'assignee_id', 'priority', 'estimate', 'due'].forEach(function (k) {
+                var f = form.elements[k];
+                if (f) f.value = t[k] == null ? '' : t[k];
+            });
+            $('[data-task-created]', taskSheet).textContent = 'Создана ' + t.created;
+            taskSheet.setAttribute('data-id', t.id);
+            var timerTask = $('[data-timer-task]', taskSheet);
+            if (timerTask) timerTask.value = t.id;
+            var ai = $('[data-task-ai]', taskSheet);
+            if (ai) ai.setAttribute('data-ask', 'Разбей задачу [задача ' + t.id + '] «' + t.title + '» на конкретные шаги и предложи их чек-листом или подзадачами.');
+            renderChecklist(t.checklist);
+            renderComments(t.comments);
+            U.openSheet(taskSheet);
+            history.replaceState(null, '', location.pathname + '?task=' + t.id + location.hash);
+        }).catch(fail);
+    }
+    function renderChecklist(items) {
+        var box = $('[data-checklist]', taskSheet);
+        var done = items.filter(function (i) { return i.done; }).length;
+        $('[data-check-count]', taskSheet).textContent = items.length ? done + ' из ' + items.length : '';
+        box.innerHTML = items.map(function (item, i) {
+            return '<label class="check-item' + (item.done ? ' on' : '') + '"><input type="checkbox" data-check="' + i + '"' + (item.done ? ' checked' : '') + '>'
+                + '<input type="text" value="' + esc(item.text) + '" readonly tabindex="-1">'
+                + '<button class="icon-btn x" type="button" data-uncheck="' + i + '" aria-label="Убрать">' + icon('x', 14) + '</button></label>';
+        }).join('');
+    }
+    function renderComments(list) {
+        var box = $('[data-comments]', taskSheet);
+        box.innerHTML = list.length ? list.map(function (c) {
+            return '<div class="comment"><span class="avatar sm">' + esc(c.author.split(' ').map(function (p) { return p[0]; }).join('').slice(0, 2)) + '</span>'
+                + '<div class="bubble"><small>' + esc(c.author) + ' · ' + esc(c.at) + '</small>' + esc(c.text) + '</div></div>';
+        }).join('') : '<p class="small faint">Комментариев пока нет.</p>';
+    }
+    if (taskSheet) {
+        var tid = function () { return taskSheet.getAttribute('data-id'); };
+        taskSheet.addEventListener('change', function (event) {
+            var box = event.target.closest('[data-check]');
+            if (!box) return;
+            api('/api/task/' + tid() + '/check', { index: Number(box.getAttribute('data-check')), done: box.checked })
+                .then(function (r) { renderChecklist(r.checklist); if (box.checked) U.haptic('success'); }).catch(fail);
+        });
+        taskSheet.addEventListener('click', function (event) {
+            var rm = event.target.closest('[data-uncheck]');
+            if (rm) {
+                event.preventDefault();
+                api('/api/task/' + tid() + '/check', { index: Number(rm.getAttribute('data-uncheck')), remove: true })
+                    .then(function (r) { renderChecklist(r.checklist); }).catch(fail);
+            }
+        });
+        var addCheck = $('[data-check-add]', taskSheet);
+        addCheck.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' || !addCheck.value.trim()) return;
+            event.preventDefault();
+            api('/api/task/' + tid() + '/check', { add: addCheck.value }).then(function (r) {
+                addCheck.value = '';
+                renderChecklist(r.checklist);
+                U.haptic('select');
+            }).catch(fail);
+        });
+        var commentForm = $('[data-comment-form]', taskSheet);
+        commentForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            var area = $('textarea', commentForm);
+            if (!area.value.trim()) return;
+            api('/api/task/' + tid() + '/comment', { text: area.value }).then(function (t) {
+                area.value = '';
+                renderComments(t.comments);
+                U.haptic('success');
+            }).catch(fail);
+        });
+        taskSheet.addEventListener('close', function () {
+            history.replaceState(null, '', location.pathname + location.hash);
+        });
+        document.addEventListener('click', function (event) {
+            var card = event.target.closest('[data-open-task]');
+            if (!card || card.getAttribute('data-dragged')) return;
+            event.preventDefault();
+            openTask(card.getAttribute('data-open-task'));
+        });
+        var wanted = new URLSearchParams(location.search).get('task');
+        if (wanted) openTask(wanted);
+    }
+    // Новая задача прямо в колонке
+    $$('[data-col-add]').forEach(function (form) {
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            var data = new FormData(form);
+            fetch(form.action, { method: 'POST', body: data, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function (r) { if (!r.ok) throw new Error('Не получилось'); U.haptic('success'); location.reload(); })
+                .catch(fail);
+        });
+    });
+    // Вид задач: доска или список
+    $$('[data-view]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var view = button.getAttribute('data-view');
+            $$('[data-view]').forEach(function (b) { b.classList.toggle('on', b === button); });
+            $$('[data-view-pane]').forEach(function (p) { p.hidden = p.getAttribute('data-view-pane') !== view; });
+            api('/api/prefs', { board_view: view }).catch(function () {});
+        });
+    });
+
+    /* ── Навыки: чипы с уровнем ───────────────────────────────────────────── */
+    $$('[data-skills]').forEach(function (box) {
+        var input = $('[data-skill-input]', box);
+        var chip = function (name, level) {
+            var el = document.createElement('span');
+            el.className = 'skill-chip';
+            el.innerHTML = '<span>' + esc(name) + '</span><span class="lv-dots">'
+                + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-lv="' + n + '" aria-label="Уровень ' + n + '"></button>'; }).join('')
+                + '</span><button class="x" type="button" aria-label="Убрать">' + icon('x', 13) + '</button>'
+                + '<input type="hidden" name="skill" value="">';
+            box.insertBefore(el, input);
+            set(el, name, level);
+            return el;
+        };
+        var set = function (el, name, level) {
+            $$('[data-lv]', el).forEach(function (b) { b.classList.toggle('on', Number(b.getAttribute('data-lv')) <= level); });
+            $('input', el).value = name + '|' + level;
+            el.setAttribute('data-name', name);
+        };
+        $$('[data-skill]', box).forEach(function (s) {
+            chip(s.getAttribute('data-skill'), Number(s.getAttribute('data-level')) || 3);
+            s.remove();
+        });
+        box.addEventListener('click', function (event) {
+            var lv = event.target.closest('[data-lv]');
+            var el = event.target.closest('.skill-chip');
+            if (lv && el) { set(el, el.getAttribute('data-name'), Number(lv.getAttribute('data-lv'))); U.haptic('select'); }
+            if (event.target.closest('.x') && el) { el.remove(); U.haptic('tap'); }
+        });
+        input.addEventListener('keydown', function (event) {
+            if ((event.key === 'Enter' || event.key === ',') && input.value.trim()) {
+                event.preventDefault();
+                chip(input.value.trim().slice(0, 60), 3);
+                input.value = '';
+                U.haptic('select');
+            }
+        });
+        input.form.addEventListener('submit', function () {
+            if (input.value.trim()) chip(input.value.trim().slice(0, 60), 3);
+        });
+    });
+})();
+
+/* ── Мелочи интерфейса: заполнение листов, фильтры, быстрые значения ─────── */
+(function () {
+    'use strict';
+    var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+    // Кнопка с data-fill заполняет форму листа перед открытием (data-fill — JSON)
+    document.addEventListener('click', function (event) {
+        var opener = event.target.closest && event.target.closest('[data-sheet-open][data-fill]');
+        if (!opener) return;
+        var sheet = document.getElementById(opener.getAttribute('data-sheet-open'));
+        var data;
+        try { data = JSON.parse(opener.getAttribute('data-fill')); } catch (e) { return; }
+        if (!sheet) return;
+        Object.keys(data).forEach(function (key) {
+            if (key.charAt(0) === '_') {
+                $$('[data-fill-text="' + key + '"]', sheet).forEach(function (el) { el.textContent = data[key]; });
+                return;
+            }
+            $$('[name="' + key + '"]', sheet).forEach(function (field) {
+                var value = data[key];
+                if (field.type === 'checkbox') field.checked = Array.isArray(value) ? value.indexOf(field.value) >= 0 : !!value;
+                else field.value = value == null ? '' : value;
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        });
+    }, true);
+    // Ползунок, связанный с числовым полем
+    $$('[data-range-for]').forEach(function (range) {
+        var field = range.form ? range.form.elements[range.getAttribute('data-range-for')]
+            : range.closest('form, .sheet-body').querySelector('[name="' + range.getAttribute('data-range-for') + '"]');
+        if (!field) return;
+        var last = -1;
+        range.addEventListener('input', function () {
+            field.value = range.value;
+            if (Math.abs(range.value - last) >= 10 || range.value == 0 || range.value == 100) { window.UNIT.haptic('select'); last = range.value; }
+        });
+        field.addEventListener('input', function () { range.value = field.value || 0; });
+    });
+    // Поиск по карточкам на странице
+    $$('[data-filter-input]').forEach(function (input) {
+        input.addEventListener('input', function () {
+            var q = input.value.trim().toLowerCase();
+            $$(input.getAttribute('data-filter-input')).forEach(function (el) {
+                el.hidden = q && (el.getAttribute('data-text') || el.textContent.toLowerCase()).indexOf(q) < 0;
+            });
+        });
+    });
+    // Быстрые значения: кнопка data-set="поле" data-value="…"
+    document.addEventListener('click', function (event) {
+        var b = event.target.closest && event.target.closest('[data-set]');
+        if (!b) return;
+        var form = b.closest('form') || b.closest('.sheet-body');
+        var field = form && form.querySelector('[name="' + b.getAttribute('data-set') + '"]');
+        if (field) { field.value = b.getAttribute('data-value'); window.UNIT.haptic('select'); }
+    });
+    // Очистить разговор с ИИ (кнопка в шапке страницы)
+    document.addEventListener('click', function (event) {
+        var b = event.target.closest && event.target.closest('[data-chat-clear]');
+        if (!b || b.closest('[data-chat]')) return;
+        var box = document.querySelector('.chat-box [data-chat]');
+        if (!box || !window.confirm('Очистить разговор?')) return;
+        window.LAB.api('/api/ai/clear', { thread: box.getAttribute('data-thread') || 'me' }).then(function () { location.reload(); });
+    });
+})();

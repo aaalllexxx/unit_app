@@ -1,66 +1,73 @@
 {% extends 'base.html' %}
-{% from '_icons.html' import icon, progress, phases, initials %}
+{% from '_icons.html' import icon, progress, phases, initials, kind_icon %}
 {% block title %}{{ p.title }} — Лаборатория UNIT{% endblock %}
+{% block back %}/projects{% endblock %}
 {% block content %}
-<div class="crumbs" style="margin-bottom: 14px"><a href="/projects">Проекты</a><span>/</span><span class="truncate">{{ p.title }}</span></div>
-<div class="grid split" style="margin-bottom: 26px">
-  <div class="titles stack-sm">
-    <div class="row-wrap">
-      <span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span>
+{% set team_people = team|map(attribute='member_id')|select('in', people)|list %}
+<div data-ai-thread="p{{ p.id }}">
+
+<div class="proj-head">
+  <div class="stack-sm" style="gap: 10px; min-width: 0">
+    <div class="row-wrap" style="gap: 8px">
+      <span class="chip tone {{ 's-late' if health == 'late' else 's-paused' if health == 'risk' else 's-' ~ p.status }}"><span class="dot"></span>{{ 'Просрочен' if health == 'late' else 'Отстаёт от графика' if health == 'risk' else statuses[p.status] }}</span>
       {% if p.closed %}<span class="chip">{{ icon('lock', 12) }}Закрытый</span>{% endif %}
       {% if p.public %}<span class="chip">{{ icon('eye', 12) }}На лендинге</span>{% endif %}
     </div>
     <h1>{{ p.title }}</h1>
     {% if p.summary %}<p class="muted" style="max-width: 46em">{{ p.summary }}</p>{% endif %}
-    <div class="row-wrap small faint" style="gap: 18px; margin-top: 4px">
+    <div class="row-wrap small faint" style="gap: 16px">
       {% if p.customer %}<span class="row" style="gap: 6px">{{ icon('user', 14) }}{{ p.customer }}</span>{% endif %}
       {% if p.due %}<span class="row {{ 'late' if p.due < today and percent < 100 }}" style="gap: 6px">{{ icon('calendar', 14) }}до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}
       {% if p.repo_url and not customer %}<a class="row" style="gap: 6px" href="{{ p.repo_url }}" target="_blank" rel="noopener">{{ icon('git', 14) }}Репозиторий</a>{% endif %}
     </div>
+    {% if not customer %}
+    <div class="row-wrap" style="gap: 8px; margin-top: 4px">
+      {% if ai_on and member %}
+      <button class="ai-btn" type="button" data-ai-open data-ask="Оцени проект «{{ p.title }}»: успеваем ли к сроку, где риски и узкие места, что сделать на этой неделе. Предложи конкретные действия.">{{ icon('spark', 15) }}Оценить проект</button>
+      {% if editable %}<button class="btn btn-ghost btn-sm" type="button" data-ai-open data-ask="Разбей проект «{{ p.title }}» на части и задачи с исполнителями из команды и сроками. Учти то, что уже есть.">{{ icon('spark', 14) }}Разбить на задачи</button>{% endif %}
+      {% endif %}
+      {% if editable %}<button class="btn btn-ghost btn-sm" type="button" data-sheet-open="settings-sheet">{{ icon('settings', 14) }}Настройки</button>{% endif %}
+    </div>
+    {% endif %}
   </div>
-  <div class="panel panel-pad stack-sm">
+  <div class="panel panel-pad stack-sm proj-progress">
     <div class="row"><span class="label-mono">Готовность</span><span class="pct spacer">{{ percent }}<small>%</small></span></div>
     {{ progress(percent) }}
     {% if parts %}<div style="margin-top: 6px">{{ phases(phase_rows) }}</div>{% endif %}
+    {% if not customer %}<div class="row tiny faint" style="gap: 14px; margin-top: 4px"><span>{{ tasks|selectattr('column', 'equalto', 'done')|list|length }} из {{ tasks|length }} задач</span><span>{{ '%g' % total_hours }} ч</span><span>{{ team|length }} в команде</span></div>{% endif %}
   </div>
 </div>
 
-<div class="tabs">
-  <a href="#parts">{{ icon('layers', 15) }}Части и этапы</a>
-  {% if not customer %}<a href="#tasks">{{ icon('grid', 15) }}Задачи</a><a href="#team">{{ icon('users', 15) }}Команда</a><a href="#time">{{ icon('clock', 15) }}Время</a>{% endif %}
-  <a href="#journal">{{ icon('activity', 15) }}Журнал</a>
-  {% if editable %}<a href="#about">{{ icon('settings', 15) }}Настройки</a>{% endif %}
+{% if signals %}
+<div class="signal-strip">{% for s in signals %}<a class="signal-chip {{ s.level }}" href="{{ s.link }}">{{ icon(s.icon, 14) }}{{ s.text }}</a>{% endfor %}</div>
+{% endif %}
+
+<div class="seg-tabs" data-tabs="#project-panes" role="tablist">
+  <button class="tab-btn" type="button" data-tab="parts" role="tab">{{ icon('layers', 15) }}Части</button>
+  {% if not customer %}
+  <button class="tab-btn" type="button" data-tab="tasks" role="tab">{{ icon('board', 15) }}Задачи<span class="count-badge">{{ tasks|rejectattr('column', 'equalto', 'done')|list|length }}</span></button>
+  <button class="tab-btn" type="button" data-tab="team" role="tab">{{ icon('users', 15) }}Команда</button>
+  <button class="tab-btn" type="button" data-tab="files" role="tab">{{ icon('desk', 15) }}Материалы{% if materials %}<span class="count-badge">{{ materials|length }}</span>{% endif %}</button>
+  {% endif %}
+  <button class="tab-btn" type="button" data-tab="journal" role="tab">{{ icon('activity', 15) }}Журнал</button>
 </div>
 
-<section id="parts">
-  <div class="section-title"><h2>Части проекта</h2>
-    <span class="tiny faint">Доли этапов: {% for k, n, w in all_phases %}{{ n|lower }} {{ w }}%{{ ', ' if not loop.last }}{% endfor %}</span></div>
+<div id="project-panes">
+<section data-pane="parts">
   <div class="panel">
     {% for part in parts %}{% set pp = part_percent(part) %}{% set cur = (all_phases|map(attribute=0)|list).index(part.phase) %}
     <div class="part">
       <div class="stack-sm" style="gap: 8px">
-        <div class="row-wrap"><h3>{{ part.title }}</h3>
+        <div class="row-wrap" style="gap: 8px"><h3>{{ part.title }}</h3>
           <span class="chip tone s-idea">{{ phase_name[part.phase] }} · {{ part.phase_progress }}%</span></div>
-        {% if part.owner_id and people.get(part.owner_id) %}<span class="tiny faint row" style="gap: 6px">{{ icon('user', 13) }}{{ people[part.owner_id].name }}</span>{% endif %}
+        <div class="row-wrap tiny faint" style="gap: 12px">
+          {% if part.owner_id and people.get(part.owner_id) %}<span class="row" style="gap: 6px">{{ icon('user', 13) }}{{ people[part.owner_id].name }}</span>{% endif %}
+          <span>обновлено {{ part.updated_at.strftime('%d.%m') if part.updated_at else '—' }}</span>
+        </div>
         {% if part.note %}<p class="small muted">{{ part.note }}</p>{% endif %}
         {% if member %}
-        <details>
-          <summary class="disclose">{{ icon('pen', 13) }}Обновить прогресс</summary>
-          <form method="post" action="/p/{{ p.id }}/part" class="edit">
-            <input type="hidden" name="part_id" value="{{ part.id }}">
-            <label class="field"><span class="label">Этап</span><select class="select" name="phase">{% for k, n, w in all_phases %}<option value="{{ k }}" {{ 'selected' if k == part.phase }}>{{ n }}</option>{% endfor %}</select></label>
-            <label class="field"><span class="label">Готовность этапа, %</span><input class="input" type="number" name="phase_progress" min="0" max="100" step="5" value="{{ part.phase_progress }}"></label>
-            {% if editable %}
-            <label class="field"><span class="label">Название</span><input class="input" name="title" value="{{ part.title }}"></label>
-            <label class="field"><span class="label">Вес в проекте</span><input class="input" name="weight" value="{{ '%g' % part.weight }}"></label>
-            <label class="field"><span class="label">Ответственный</span><select class="select" name="owner_id"><option value="">—</option>{% for t in team %}{% if people.get(t.member_id) %}<option value="{{ t.member_id }}" {{ 'selected' if t.member_id == part.owner_id }}>{{ people[t.member_id].name }}</option>{% endif %}{% endfor %}</select></label>
-            {% endif %}
-            <label class="field full"><span class="label">Комментарий</span><input class="input" name="note" value="{{ part.note }}" placeholder="Что сделано, что мешает"></label>
-            <label class="check small full"><input type="checkbox" name="advance" value="1" checked>Если этап готов на 100% — перевести часть на следующий</label>
-            <div class="row full"><button class="btn btn-primary btn-sm" type="submit">Сохранить</button>
-              {% if editable %}<button class="btn btn-danger btn-sm spacer" type="submit" name="delete" value="1" data-confirm="Удалить часть «{{ part.title }}»?">{{ icon('trash', 14) }}Удалить</button>{% endif %}</div>
-          </form>
-        </details>
+        <button class="btn btn-ghost btn-sm" type="button" style="align-self: flex-start" data-sheet-open="part-sheet"
+                data-fill='{{ {"part_id": part.id, "title": part.title, "phase": part.phase, "phase_progress": part.phase_progress, "weight": "%g" % part.weight, "owner_id": part.owner_id or "", "note": part.note, "_title": part.title}|tojson }}'>{{ icon('pen', 13) }}Обновить прогресс</button>
         {% endif %}
       </div>
       <div class="stack-sm">
@@ -71,102 +78,126 @@
         {% endfor %}</div>
       </div>
     </div>
-    {% else %}<div class="empty">Проект ещё не разбит на части. Часть — это модуль, сервис или исследование со своим этапом и процентом готовности.</div>{% endfor %}
+    {% else %}<div class="empty">Проект ещё не разбит на части. Часть — модуль, сервис или исследование со своим этапом и процентом готовности.{% if ai_on and editable %}<br><button class="btn btn-ghost btn-sm" type="button" style="margin-top: 12px" data-ai-open data-ask="Предложи, на какие части разбить проект «{{ p.title }}», действиями part.">{{ icon('spark', 14) }}Предложить части</button>{% endif %}</div>{% endfor %}
     {% if editable %}
     <form method="post" action="/p/{{ p.id }}/part" class="panel-foot form-row">
-      <input class="input" name="title" placeholder="Новая часть: например, «Мобильное приложение» или «Аудит веб-сервиса»" required>
-      <button class="btn btn-ghost" type="submit">{{ icon('plus', 15) }}Добавить часть</button>
+      <input class="input" name="title" placeholder="Новая часть: «Мобильное приложение», «Аудит веб-сервиса»" required>
+      <button class="btn btn-ghost" type="submit">{{ icon('plus', 15) }}Добавить</button>
     </form>
     {% endif %}
   </div>
+  <p class="tiny faint" style="margin-top: 10px">Доли этапов в готовности части: {% for k, n, w in all_phases %}{{ n|lower }} {{ w }}%{{ ', ' if not loop.last }}{% endfor %}.</p>
 </section>
 
 {% if not customer %}
-<section id="tasks">
-  <div class="section-title"><h2>Задачи</h2><span class="count-badge">{{ tasks|length }}</span></div>
-  <div class="board">
+<section data-pane="tasks" hidden>
+  <div class="row-wrap" style="margin-bottom: 12px; gap: 10px">
+    <span class="small muted">Перетащите карточку в другую колонку{{ ' (на телефоне — удерживайте)' }}. Нажмите — откроется задача.</span>
+    <div class="view-toggle spacer" role="group" aria-label="Вид">
+      <button type="button" class="{{ 'on' if (me.prefs or {}).get('board_view', 'board') == 'board' }}" data-view="board" aria-label="Доска">{{ icon('board', 16) }}</button>
+      <button type="button" class="{{ 'on' if (me.prefs or {}).get('board_view') == 'list' }}" data-view="list" aria-label="Список">{{ icon('list', 16) }}</button>
+    </div>
+  </div>
+  <div class="board" data-board data-view-pane="board" {{ 'hidden' if (me.prefs or {}).get('board_view') == 'list' }}>
     {% for key, name in columns %}{% set col_tasks = tasks|selectattr('column', 'equalto', key)|list %}
-    <div class="col">
-      <div class="col-head"><b>{{ name }}</b><span class="count-badge spacer">{{ col_tasks|length }}</span></div>
-      {% for t in col_tasks %}
-      <div class="task">
-        <details>
-          <summary><span class="strong" style="font-weight: 500">{{ t.title }}</span>
-            <div class="meta">
-              {% if t.assignee_id and people.get(t.assignee_id) %}<span>{{ people[t.assignee_id].name }}</span>{% endif %}
-              {% for part in parts if part.id == t.part_id %}<span>{{ part.title }}</span>{% endfor %}
-              <span>{{ phase_name.get(t.phase, '') }}</span>
-              {% if t.estimate %}<span class="mono">{{ '%g' % t.estimate }} ч</span>{% endif %}
-              {% if t.due %}<span class="mono {{ 'late' if t.due < today and t.column != 'done' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}
-            </div>
-          </summary>
-          {% if member %}
-          <form method="post" action="/p/{{ p.id }}/task">
-            <input type="hidden" name="task_id" value="{{ t.id }}">
-            <input class="input input-sm" name="title" value="{{ t.title }}">
-            <textarea class="textarea" name="about" rows="2" placeholder="Описание">{{ t.about }}</textarea>
-            <select class="select input-sm" name="column">{% for k, n in columns %}<option value="{{ k }}" {{ 'selected' if k == t.column }}>{{ n }}</option>{% endfor %}</select>
-            <select class="select input-sm" name="assignee_id"><option value="">Без исполнителя</option>{% for tm in team %}{% if people.get(tm.member_id) and people[tm.member_id].role != 'customer' %}<option value="{{ tm.member_id }}" {{ 'selected' if tm.member_id == t.assignee_id }}>{{ people[tm.member_id].name }}</option>{% endif %}{% endfor %}</select>
-            <select class="select input-sm" name="part_id"><option value="">Без части</option>{% for part in parts %}<option value="{{ part.id }}" {{ 'selected' if part.id == t.part_id }}>{{ part.title }}</option>{% endfor %}</select>
-            <select class="select input-sm" name="phase">{% for k, n, w in all_phases %}<option value="{{ k }}" {{ 'selected' if k == t.phase }}>{{ n }}</option>{% endfor %}</select>
-            <div class="row" style="gap: 8px"><input class="input input-sm" name="estimate" value="{{ '%g' % t.estimate if t.estimate }}" placeholder="Оценка, ч"><input class="input input-sm" type="date" name="due" value="{{ t.due or '' }}"></div>
-            <button class="btn btn-primary btn-sm" type="submit">Сохранить</button>
-          </form>
-          {% endif %}
-        </details>
-      </div>
+    <div class="col" data-col="{{ key }}">
+      <div class="col-head"><b>{{ name }}</b><span class="count-badge spacer" data-col-count>{{ col_tasks|length }}</span></div>
+      <div class="stack-sm" data-col-list style="gap: 8px; min-height: 40px">
+      {% for t in col_tasks|sort(attribute='priority') %}
+        <button class="task-card" type="button" data-task="{{ t.id }}" data-open-task="{{ t.id }}">
+          <b>{% if t.priority == 1 %}<span class="prio p1" style="display: inline-block; margin-right: 6px; vertical-align: 2px"></span>{% endif %}{{ t.title }}</b>
+          <span class="tc-meta">
+            {% for part in parts if part.id == t.part_id %}<span class="truncate" style="max-width: 120px">{{ part.title }}</span>{% endfor %}
+            {% if t.due %}<span class="tc-pill {{ 'late' if t.due < today and t.column != 'done' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}
+            {% if t.checklist %}<span class="tc-pill">{{ icon('checklist', 11) }}{{ t.checklist|selectattr('done')|list|length }}/{{ t.checklist|length }}</span>{% endif %}
+            {% if comments.get(t.id) %}<span class="tc-pill">{{ icon('chat', 11) }}{{ comments[t.id] }}</span>{% endif %}
+            {% if t.assignee_id and people.get(t.assignee_id) %}<span class="avatar sm" title="{{ people[t.assignee_id].name }}">{{ initials(people[t.assignee_id].name) }}</span>{% endif %}
+          </span>
+        </button>
       {% endfor %}
+      </div>
+      {% if member %}
+      <form class="col-add" method="post" action="/p/{{ p.id }}/task" data-col-add>
+        <input type="hidden" name="column" value="{{ key }}">
+        <input class="input" name="title" placeholder="+ Задача" required aria-label="Новая задача в «{{ name }}»">
+      </form>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
-  {% if member %}
-  <form method="post" action="/p/{{ p.id }}/task" class="panel panel-pad form-row" style="margin-top: 14px; padding: 14px">
-    <input class="input" name="title" placeholder="Новая задача" required>
-    <select class="select auto" name="part_id"><option value="">Без части</option>{% for part in parts %}<option value="{{ part.id }}">{{ part.title }}</option>{% endfor %}</select>
-    <select class="select auto" name="assignee_id"><option value="">Исполнитель</option>{% for tm in team %}{% if people.get(tm.member_id) and people[tm.member_id].role != 'customer' %}<option value="{{ tm.member_id }}">{{ people[tm.member_id].name }}</option>{% endif %}{% endfor %}</select>
-    <button class="btn btn-primary" type="submit">{{ icon('plus', 15) }}Добавить</button>
-  </form>
+  <div class="panel" data-view-pane="list" {{ 'hidden' if (me.prefs or {}).get('board_view', 'board') == 'board' }}>
+    {% for key, name in columns %}{% set col_tasks = tasks|selectattr('column', 'equalto', key)|list %}{% if col_tasks %}
+    <div class="group-label">{{ name }} · {{ col_tasks|length }}</div>
+    {% for t in col_tasks %}
+    <div class="task-row">
+      <button class="task-check {{ 'done' if t.column == 'done' }}" type="button" data-task-done="{{ t.id }}" data-was="{{ t.column if t.column != 'done' else 'doing' }}" aria-label="Готово">{{ icon('check', 14) }}</button>
+      <div class="grow"><a class="t" href="?task={{ t.id }}#tasks" data-open-task="{{ t.id }}">{{ t.title }}</a>
+        <span class="meta">{% if t.assignee_id and people.get(t.assignee_id) %}{{ people[t.assignee_id].name }}{% else %}без исполнителя{% endif %}{% if t.estimate %} · {{ '%g' % t.estimate }} ч{% endif %}</span></div>
+      {% if t.due %}<span class="mono tiny {{ 'late' if t.due < today and t.column != 'done' else 'faint' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}
+    </div>
+    {% endfor %}{% endif %}{% endfor %}
+    {% if not tasks %}<div class="empty">Задач пока нет.</div>{% endif %}
+  </div>
+</section>
+
+<section data-pane="team" hidden>
+  <div class="grid g2" style="align-items: start">
+    <div class="panel">
+      <div class="panel-head"><h3>Команда</h3><span class="count-badge spacer">{{ team|length }}</span></div>
+      <div class="rows">
+        {% for t in team %}{% set m = people.get(t.member_id) %}{% if m %}
+        <div class="r">
+          <a class="avatar" href="/people/{{ m.id }}">{{ initials(m.name) }}</a>
+          <div class="grow stack-xs" style="gap: 1px"><a class="small strong" href="/people/{{ m.id }}">{{ m.name }}</a><span class="tiny faint">{{ t.role or roles[m.role] }}{% if m.id == p.lead_id %} · руководитель проекта{% endif %}</span></div>
+          {% if editable and m.id != p.lead_id %}<form method="post" action="/p/{{ p.id }}/team"><button class="icon-btn" name="remove" value="{{ m.id }}" type="submit" title="Убрать из команды" aria-label="Убрать из команды" data-confirm="Убрать {{ m.name }} из команды?">{{ icon('x', 15) }}</button></form>{% endif %}
+        </div>{% endif %}
+        {% else %}<div class="empty">В команде пока никого.</div>{% endfor %}
+      </div>
+      {% if editable %}
+      <form method="post" action="/p/{{ p.id }}/team" class="panel-foot stack-sm">
+        <select class="select" name="member_id" required><option value="">Добавить человека или заказчика</option>{% for m in staff if m.id not in team_people %}<option value="{{ m.id }}">{{ m.name }}{% if m.role == 'customer' %} (заказчик{% if m.company %}, {{ m.company }}{% endif %}){% endif %}</option>{% endfor %}</select>
+        <div class="row" style="gap: 8px"><input class="input" name="role" placeholder="Роль в проекте: бэкенд, аналитик…" style="flex: 1"><button class="btn btn-ghost" type="submit">{{ icon('plus', 15) }}Добавить</button></div>
+      </form>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Время</h3><span class="count-badge spacer">{{ '%g' % total_hours }} ч</span></div>
+      <div class="rows">
+        {% for mid, h in hours|sort(attribute=1, reverse=true) %}<div class="r"><span class="avatar sm">{{ initials(people[mid].name if people.get(mid) else '?') }}</span><span class="grow small">{{ people[mid].name if people.get(mid) else mid }}</span>
+          <span style="width: 90px">{{ progress(((h / total_hours * 100) if total_hours else 0)|round|int) }}</span><span class="mono small right" style="width: 48px">{{ '%g' % h }} ч</span></div>
+        {% else %}<div class="empty">Часы ещё не записаны. Проще всего — таймером на задаче.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section data-pane="files" hidden>
+  {% if materials %}
+  <div class="desk-grid">
+    {% for i in materials %}
+    <a class="desk-card {{ 'c-' ~ i.color if i.color }}" href="{{ '/desk/file/' ~ i.id if i.kind == 'file' else '/desk?open=' ~ i.id if i.member_id == me.id else '#m' ~ i.id }}">
+      <span class="dc-top">{{ kind_icon(i.kind, 13) }}{{ kinds[i.kind] }}{% if not i.shared %}<span class="spacer">только вам</span>{% endif %}</span>
+      <h4>{{ i.title or 'Без названия' }}</h4>
+      {% if i.kind == 'checklist' %}<div class="dc-list">{% for c in (i.data or {}).get('items', [])[:6] %}<span class="{{ 'on' if c.done }}">{{ '☑' if c.done else '☐' }} {{ c.text }}</span>{% endfor %}</div>
+      {% elif i.kind == 'code' %}<pre class="dc-body">{{ i.body[:600] }}</pre>
+      {% elif i.kind == 'link' %}<span class="dc-body" style="color: var(--accent)">{{ (i.data or {}).get('url', '') }}</span>
+      {% elif i.body %}<span class="dc-body">{{ i.body[:400] }}</span>{% endif %}
+      <span class="dc-foot">{{ people[i.member_id].name if people.get(i.member_id) else '' }} · {{ i.updated_at.strftime('%d.%m') }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="panel empty">Материалов пока нет. На рабочем столе привяжите наработку к проекту и включите «Показать команде».<br><a class="btn btn-ghost btn-sm" href="/desk" style="margin-top: 12px">{{ icon('desk', 14) }}На рабочий стол</a></div>
   {% endif %}
 </section>
-
-<div class="grid g2" style="align-items: start">
-<section id="team">
-  <div class="section-title"><h2>Команда</h2><span class="count-badge">{{ team|length }}</span></div>
-  <div class="panel rows">
-    {% for t in team %}{% set m = people.get(t.member_id) %}{% if m %}
-    <div class="r">
-      <a class="avatar" href="/people/{{ m.id }}">{{ initials(m.name) }}</a>
-      <div class="grow stack-xs"><a class="small strong" href="/people/{{ m.id }}">{{ m.name }}</a><span class="tiny faint">{{ t.role or roles[m.role] }}{% if m.id == p.lead_id %} · руководитель проекта{% endif %}</span></div>
-      {% if editable and m.id != p.lead_id %}<form method="post" action="/p/{{ p.id }}/team"><button class="btn btn-quiet btn-icon btn-sm" name="remove" value="{{ m.id }}" type="submit" title="Убрать из команды" aria-label="Убрать из команды">{{ icon('x', 15) }}</button></form>{% endif %}
-    </div>{% endif %}
-    {% else %}<div class="empty">В команде пока никого.</div>{% endfor %}
-    {% if editable %}
-    <form method="post" action="/p/{{ p.id }}/team" class="panel-foot form-row">
-      <select class="select" name="member_id" required><option value="">Добавить человека или заказчика</option>{% for m in staff %}<option value="{{ m.id }}">{{ m.name }}{% if m.role == 'customer' %} (заказчик{% if m.company %}, {{ m.company }}{% endif %}){% endif %}</option>{% endfor %}</select>
-      <input class="input" name="role" placeholder="Роль в проекте" style="max-width: 170px">
-      <button class="btn btn-ghost btn-icon" type="submit" title="Добавить" aria-label="Добавить">{{ icon('plus', 16) }}</button>
-    </form>
-    {% endif %}
-  </div>
-</section>
-
-<section id="time">
-  <div class="section-title"><h2>Время</h2><span class="count-badge">{{ '%g' % total_hours }} ч</span></div>
-  <div class="panel rows">
-    {% for mid, h in hours %}<div class="r"><span class="avatar sm">{{ initials(people[mid].name if people.get(mid) else '?') }}</span><span class="grow small">{{ people[mid].name if people.get(mid) else mid }}</span><span class="mono small">{{ '%g' % h }} ч</span></div>
-    {% else %}<div class="empty">Часы ещё не записаны. Записать — в разделе «Учёт времени».</div>{% endfor %}
-  </div>
-</section>
-</div>
 {% endif %}
 
-<section id="journal">
-  <div class="section-title"><h2>Журнал</h2></div>
+<section data-pane="journal" hidden>
   <div class="panel">
     {% if member %}
     <form method="post" action="/p/{{ p.id }}/update" class="panel-body stack-sm" style="border-bottom: 1px solid var(--line)">
-      <textarea class="textarea" name="text" rows="2" placeholder="Что произошло: решение, результат, договорённость" required></textarea>
-      <div class="row-wrap"><label class="check small"><input type="checkbox" name="for_customer" value="1">Показать заказчику — придёт письмо</label>
+      <textarea class="textarea" name="text" data-autosize rows="2" placeholder="Что произошло: решение, результат, договорённость" required></textarea>
+      <div class="row-wrap"><label class="check small"><input type="checkbox" name="for_customer" value="1">Показать заказчику — придёт уведомление</label>
         <button class="btn btn-primary btn-sm spacer" type="submit">Записать</button></div>
     </form>
     {% endif %}
@@ -183,30 +214,113 @@
     </div>
   </div>
 </section>
+</div>
+</div>
+
+{% if member %}
+{# Задача #}
+<dialog class="sheet wide tall" id="task-sheet" aria-labelledby="ts-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="ts-title">Задача</h3><span class="tiny faint" data-task-created></span>
+    <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <div class="sheet-body">
+    <form method="post" action="/p/{{ p.id }}/task" data-task-form id="task-form" class="stack-sm" style="gap: 14px">
+      <input type="hidden" name="task_id">
+      <input class="input" name="title" required aria-label="Название" style="font-size: 16px; font-weight: 600">
+      <textarea class="textarea" name="about" data-autosize rows="3" placeholder="Описание: что сделать и как понять, что готово"></textarea>
+      <div class="fgrid three">
+        <label class="field"><span class="label">Колонка</span><select class="select" name="column">{% for k, n in columns %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Исполнитель</span><select class="select" name="assignee_id"><option value="">—</option>{% for tm in team %}{% if people.get(tm.member_id) and people[tm.member_id].role != 'customer' %}<option value="{{ tm.member_id }}">{{ people[tm.member_id].name }}</option>{% endif %}{% endfor %}</select></label>
+        <label class="field"><span class="label">Срок</span><input class="input" type="date" name="due"></label>
+        <label class="field"><span class="label">Приоритет</span><select class="select" name="priority"><option value="1">Срочно</option><option value="2">Обычный</option><option value="3">Когда-нибудь</option></select></label>
+        <label class="field"><span class="label">Часть</span><select class="select" name="part_id"><option value="">—</option>{% for part in parts %}<option value="{{ part.id }}">{{ part.title }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Оценка, ч</span><input class="input mono" name="estimate" inputmode="decimal" placeholder="4"></label>
+        <label class="field full"><span class="label">Этап</span><select class="select" name="phase">{% for k, n, w in all_phases %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
+      </div>
+    </form>
+    <div class="fieldset">
+      <div class="row"><span class="label-mono">Чек-лист</span><span class="tiny faint spacer" data-check-count></span></div>
+      <div class="check-items" data-checklist></div>
+      <input class="input input-sm" data-check-add placeholder="Новый пункт — Enter">
+    </div>
+    <div class="stack-sm">
+      <span class="label-mono">Обсуждение</span>
+      <div class="stack-sm" data-comments></div>
+      <form class="row" style="gap: 8px; align-items: flex-end" data-comment-form>
+        <textarea class="textarea" data-autosize rows="1" placeholder="Комментарий — увидят исполнитель и руководитель" style="flex: 1; min-height: 40px"></textarea>
+        <button class="btn btn-ghost" type="submit" aria-label="Отправить">{{ icon('send', 16) }}</button>
+      </form>
+    </div>
+  </div>
+  <div class="sheet-foot">
+    {% if not running %}<form method="post" action="/timer"><input type="hidden" name="action" value="start"><input type="hidden" name="task_id" data-timer-task><input type="hidden" name="next" value="/p/{{ p.id }}#tasks">
+      <button class="btn btn-ghost btn-sm" type="submit">{{ icon('play', 14) }}Таймер</button></form>{% endif %}
+    {% if ai_on %}<button class="btn btn-ghost btn-sm" type="button" data-ai-open data-task-ai data-ask="">{{ icon('spark', 14) }}Разбить на шаги</button>{% endif %}
+    <span class="grow"></span>
+    <button class="btn btn-ghost btn-sm" type="button" data-sheet-close>Закрыть</button>
+    <button class="btn btn-primary btn-sm" type="submit" form="task-form">{{ icon('check', 14) }}Сохранить</button>
+  </div>
+</dialog>
+
+{# Часть проекта #}
+<dialog class="sheet" id="part-sheet" aria-labelledby="ps-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="ps-title" data-fill-text="_title">Часть</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/p/{{ p.id }}/part" class="sheet-body" id="part-form">
+    <input type="hidden" name="part_id">
+    <div class="fgrid keep">
+      <label class="field"><span class="label">Этап</span><select class="select" name="phase">{% for k, n, w in all_phases %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="label">Готовность этапа, %</span><input class="input" type="number" name="phase_progress" min="0" max="100" step="5"></label>
+    </div>
+    <input type="range" min="0" max="100" step="5" data-range-for="phase_progress" aria-label="Готовность этапа">
+    <label class="field"><span class="label">Что сделано, что мешает</span><input class="input" name="note" placeholder="Коротко"></label>
+    <label class="check small"><input type="checkbox" name="advance" value="1" checked>Этап готов на 100% — перевести часть на следующий</label>
+    {% if editable %}
+    <div class="fieldset">
+      <span class="label-mono">Для руководителя проекта</span>
+      <label class="field"><span class="label">Название</span><input class="input" name="title"></label>
+      <div class="fgrid keep">
+        <label class="field"><span class="label">Ответственный</span><select class="select" name="owner_id"><option value="">—</option>{% for t in team %}{% if people.get(t.member_id) %}<option value="{{ t.member_id }}">{{ people[t.member_id].name }}</option>{% endif %}{% endfor %}</select></label>
+        <label class="field"><span class="label">Вес в проекте</span><input class="input" name="weight" inputmode="decimal"></label>
+      </div>
+    </div>
+    {% endif %}
+  </form>
+  <div class="sheet-foot">
+    {% if editable %}<button class="btn btn-danger btn-sm" type="submit" form="part-form" name="delete" value="1" data-confirm="Удалить эту часть?">{{ icon('trash', 14) }}Удалить</button>{% endif %}
+    <span class="grow"></span>
+    <button class="btn btn-primary" type="submit" form="part-form">{{ icon('check', 15) }}Сохранить</button>
+  </div>
+</dialog>
+{% endif %}
 
 {% if editable %}
-<section id="about">
-  <div class="section-title"><h2>Настройки проекта</h2></div>
-  <form method="post" action="/p/{{ p.id }}/edit" class="panel panel-pad form-grid">
-    <label class="field full"><span class="label">Название</span><input class="input" name="title" value="{{ p.title }}"></label>
-    <label class="field full"><span class="label">Коротко</span><input class="input" name="summary" value="{{ p.summary }}"></label>
-    <label class="field full"><span class="label">Описание и цели</span><textarea class="textarea" name="about" rows="4">{{ p.about }}</textarea></label>
-    <label class="field"><span class="label">Статус</span><select class="select" name="status">{% for k, v in statuses.items() %}<option value="{{ k }}" {{ 'selected' if k == p.status }}>{{ v }}</option>{% endfor %}</select></label>
-    <label class="field"><span class="label">Приоритет</span><select class="select" name="priority">{% for k, v in [(1, 'Высокий'), (2, 'Обычный'), (3, 'Низкий')] %}<option value="{{ k }}" {{ 'selected' if k == p.priority }}>{{ v }}</option>{% endfor %}</select></label>
-    <label class="field"><span class="label">Направление</span><select class="select" name="direction_id">{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == p.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
-    <label class="field"><span class="label">Заказчик</span><input class="input" name="customer" value="{{ p.customer }}"></label>
-    <label class="field"><span class="label">Начало</span><input class="input" type="date" name="starts" value="{{ p.starts or '' }}"></label>
-    <label class="field"><span class="label">Срок</span><input class="input" type="date" name="due" value="{{ p.due or '' }}"></label>
-    <label class="field full"><span class="label">Репозиторий</span><input class="input" name="repo_url" value="{{ p.repo_url }}" placeholder="https://git.labunit.ru/…"></label>
-    <label class="check full"><input type="checkbox" name="closed" value="1" {{ 'checked' if p.closed }}>Закрытый — виден только команде проекта</label>
-    <div class="option-box full">
-      <label class="check strong"><input type="checkbox" name="public" value="1" {{ 'checked' if p.public }}>Показывать на лендинге лаборатории</label>
-      <span class="tiny faint">Для внешних посетителей — своё название и описание, без внутренних подробностей. Готовность видна, пока проект не завершён.</span>
-      <input class="input" name="public_title" value="{{ p.public_title }}" placeholder="Название для лендинга">
-      <textarea class="textarea" name="public_text" rows="3" placeholder="Описание для лендинга">{{ p.public_text }}</textarea>
+<dialog class="sheet wide" id="settings-sheet" aria-labelledby="set-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="set-title">Настройки проекта</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/p/{{ p.id }}/edit" class="sheet-body" id="settings-form">
+    <div class="fgrid">
+      <label class="field full"><span class="label">Название</span><input class="input" name="title" value="{{ p.title }}"></label>
+      <label class="field full"><span class="label">Коротко</span><input class="input" name="summary" value="{{ p.summary }}"></label>
+      <label class="field full"><span class="label">Описание и цели</span><textarea class="textarea" name="about" data-autosize rows="3">{{ p.about }}</textarea></label>
     </div>
-    <div class="full"><button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button></div>
+    <div class="fgrid three">
+      <label class="field"><span class="label">Статус</span><select class="select" name="status">{% for k, v in statuses.items() %}<option value="{{ k }}" {{ 'selected' if k == p.status }}>{{ v }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="label">Приоритет</span><select class="select" name="priority">{% for k, v in [(1, 'Высокий'), (2, 'Обычный'), (3, 'Низкий')] %}<option value="{{ k }}" {{ 'selected' if k == p.priority }}>{{ v }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="label">Направление</span><select class="select" name="direction_id">{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == p.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="label">Начало</span><input class="input" type="date" name="starts" value="{{ p.starts or '' }}"></label>
+      <label class="field"><span class="label">Срок</span><input class="input" type="date" name="due" value="{{ p.due or '' }}"></label>
+      <label class="field"><span class="label">Заказчик</span><input class="input" name="customer" value="{{ p.customer }}"></label>
+    </div>
+    <label class="field"><span class="label">Репозиторий</span><input class="input" name="repo_url" value="{{ p.repo_url }}" inputmode="url" placeholder="https://git.labunit.ru/…"></label>
+    <label class="toggle-row"><span class="grow"><b>Закрытый</b><span>Виден только команде проекта</span></span><span class="switch"><input type="checkbox" name="closed" value="1" {{ 'checked' if p.closed }}><i></i></span></label>
+    <div class="fieldset">
+      <label class="toggle-row" style="padding: 0"><span class="grow"><b>Показывать на лендинге</b><span>Своё название и описание для внешних, без внутренних подробностей</span></span><span class="switch"><input type="checkbox" name="public" value="1" {{ 'checked' if p.public }}><i></i></span></label>
+      <input class="input" name="public_title" value="{{ p.public_title }}" placeholder="Название для лендинга">
+      <textarea class="textarea" name="public_text" data-autosize rows="2" placeholder="Описание для лендинга">{{ p.public_text }}</textarea>
+    </div>
   </form>
-</section>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="settings-form">{{ icon('check', 15) }}Сохранить</button></div>
+</dialog>
 {% endif %}
 {% endblock %}

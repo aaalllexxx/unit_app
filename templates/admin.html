@@ -6,51 +6,102 @@
   <div class="titles">
     <span class="eyebrow">Управление</span>
     <h1>Обзор лаборатории</h1>
-    <p class="sub">Состояние проектов, загрузка людей и доступы.</p>
+    <p class="sub">Проекты, люди и роли, ИИ-помощник.</p>
   </div>
 </div>
 
+<div class="seg-tabs" role="tablist">
+  <a class="tab-btn {{ 'on' if tab == 'overview' }}" href="/admin?tab=overview">{{ icon('chart', 15) }}Проекты</a>
+  <a class="tab-btn {{ 'on' if tab == 'people' }}" href="/admin?tab=people">{{ icon('users', 15) }}Люди и роли{% if pending %}<span class="count-badge" style="background: var(--danger); color: #fff">{{ pending|length }}</span>{% endif %}</a>
+  <a class="tab-btn {{ 'on' if tab == 'ai' }}" href="/admin?tab=ai">{{ icon('spark', 15) }}ИИ{% if not ai_ready %}<span class="count-badge">выкл</span>{% endif %}</a>
+</div>
+
+{% if tab == 'overview' %}
 <div class="stats">
   <div class="stat"><span class="label-mono">В работе</span><span class="value">{{ health|length }}</span><span class="note">активных проектов</span></div>
   <div class="stat"><span class="label-mono">В срок</span><span class="value" style="color: var(--ok)">{{ health|selectattr('state', 'equalto', 'ok')|list|length }}</span><span class="note">идут по плану</span></div>
-  <div class="stat"><span class="label-mono">Риск</span><span class="value" style="color: var(--warn)">{{ health|selectattr('state', 'equalto', 'risk')|list|length }}</span><span class="note">могут не успеть</span></div>
+  <div class="stat"><span class="label-mono">Риск</span><span class="value" style="color: var(--warn)">{{ health|selectattr('state', 'equalto', 'risk')|list|length }}</span><span class="note">отстают от графика</span></div>
   <div class="stat"><span class="label-mono">Просрочены</span><span class="value" style="color: var(--danger)">{{ health|selectattr('state', 'equalto', 'late')|list|length }}</span><span class="note">срок прошёл</span></div>
 </div>
-
-<div class="section-title"><h2>Проекты в работе</h2></div>
-<div class="panel rows" style="margin-bottom: 8px">
-  {% for h in health %}
+<div class="panel rows">
+  {% for h in health|sort(attribute='percent') %}
   <a class="r" href="/p/{{ h.p.id }}">
     <span class="grow small strong truncate">{{ h.p.title }}</span>
-    <span class="chip tone {{ 's-active' if h.state == 'ok' else 's-paused' if h.state == 'risk' else 's-late' }}"><span class="dot"></span>{{ 'В срок' if h.state == 'ok' else 'Есть риск' if h.state == 'risk' else 'Просрочен' }}</span>
+    <span class="chip tone {{ 's-active' if h.state == 'ok' else 's-paused' if h.state == 'risk' else 's-late' }}"><span class="dot"></span>{{ 'В срок' if h.state == 'ok' else 'Отстаёт' if h.state == 'risk' else 'Просрочен' }}</span>
     <span class="hide-sm" style="width: 140px">{{ progress(h.percent) }}</span><span class="mono small right" style="width: 42px">{{ h.percent }}%</span>
   </a>
   {% else %}<div class="empty">Активных проектов нет.</div>{% endfor %}
 </div>
+<p class="small muted" style="margin-top: 12px">Подробнее — сигналы, загрузка людей и стендапы — на <a href="/pulse" style="color: var(--accent)" class="strong">«Пульсе»</a>.</p>
 
-<div class="section-title"><h2>Люди и доступы</h2><span class="count-badge">{{ members|length }}</span></div>
-<div class="panel scroll-x">
-  <table class="table">
-    <thead><tr><th>Человек</th><th class="hide-sm">Направление</th><th class="num">Задачи</th><th class="num">Часы, нед.</th><th class="num hide-sm">Дней, мес.</th><th>Роль</th></tr></thead>
-    <tbody>
-    {% for m in members %}{% set l = load[m.id] %}
-    <tr>
-      <td><a class="row" href="{{ '/people/' ~ m.id if m.role not in ('customer', 'pending') else '#' }}"><span class="avatar">{{ initials(m.name) }}</span><span class="stack-xs" style="gap: 0"><b class="small strong">{{ m.name }}</b><span class="tiny faint">{{ m.email }}</span></span></a></td>
-      <td class="small hide-sm">{{ dirs[m.direction_id].title if dirs.get(m.direction_id) else '—' }}</td>
-      <td class="num">{{ l.open }}</td><td class="num">{{ '%g' % l.hours }}</td><td class="num hide-sm">{{ l.days30 }}</td>
-      <td>
-        {% if m.id != me.id %}
-        <form method="post" class="row" style="gap: 6px">
-          <input type="hidden" name="member_id" value="{{ m.id }}">
-          <select class="select input-sm" name="role" style="width: auto">{% for k, v in roles.items() %}<option value="{{ k }}" {{ 'selected' if k == m.role }}>{{ v }}</option>{% endfor %}</select>
-          <input class="input input-sm" name="company" value="{{ m.company }}" placeholder="Компания заказчика" style="width: 150px">
-          <button class="btn btn-ghost btn-icon btn-sm" type="submit" title="Сохранить" aria-label="Сохранить">{{ icon('check', 14) }}</button>
-        </form>
-        {% else %}<span class="chip tone s-idea">{{ roles[m.role] }} · вы</span>{% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+{% elif tab == 'people' %}
+<div class="row-wrap" style="gap: 8px; margin-bottom: 14px">
+  <div class="searchbar" style="margin: 0; flex: 1 1 240px">{{ icon('search', 17) }}<input class="input" type="search" placeholder="Имя или почта" data-filter-input="[data-member]" aria-label="Поиск"></div>
 </div>
+<div class="people">
+  {% for m in members %}{% set l = load[m.id] %}
+  <button class="person" type="button" data-member data-text="{{ (m.name ~ ' ' ~ m.email)|lower }}" data-sheet-open="member-sheet"
+          data-fill='{{ {"member_id": m.id, "company": m.company or "", "roles": m.all_roles(), "_title": m.name, "_mail": m.email}|tojson }}' {{ 'disabled' if m.id == me.id }} style="text-align: left; font: inherit; color: inherit; cursor: {{ 'default' if m.id == me.id else 'pointer' }}">
+    <span class="avatar">{{ initials(m.name) }}</span>
+    <span class="person-main">
+      <b>{{ m.name }}{% if m.id == me.id %} · вы{% endif %}</b>
+      <span class="person-mail">{{ m.email }}</span>
+      <span class="person-tags">{% for r in m.all_roles() %}<span class="tag {{ 'tag-role' if r != 'pending' }}" style="{{ 'background: color-mix(in srgb, var(--danger) 10%, var(--surface)); color: var(--danger)' if r == 'pending' }}">{{ role_short[r] }}</span>{% endfor %}{% if dirs.get(m.direction_id) %}<span class="tag tag-service">{{ dirs[m.direction_id].title }}</span>{% endif %}</span>
+    </span>
+    <span class="person-side" title="Задачи · часы за неделю · запросы к ИИ за 7 дней">{{ l.open }} · {{ '%g' % l.hours }} ч{% if l.ai %} · {{ l.ai }} ИИ{% endif %}</span>
+  </button>
+  {% endfor %}
+</div>
+
+<dialog class="sheet" id="member-sheet" aria-labelledby="ms-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="ms-title" data-fill-text="_title">Человек</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/admin" class="sheet-body" id="member-form">
+    <input type="hidden" name="member_id">
+    <span class="small muted" data-fill-text="_mail"></span>
+    <div class="field"><span class="label">Роли — можно несколько; человек переключается между ними</span>
+      <div class="stack-sm">{% for k, v in roles.items() if k != 'pending' %}
+        <label class="choice"><input type="checkbox" name="roles" value="{{ k }}"><span class="grow"><b>{{ v }}</b><span>{{ {'head': 'Всё: проекты, люди, доступы и ИИ', 'lead': 'Проекты своего направления, команда и пульс', 'member': 'Свои задачи, стол и проекты команды', 'customer': 'Только свои проекты: готовность и новости'}[k] }}</span></span></label>
+      {% endfor %}</div></div>
+    <label class="field"><span class="label">Компания (для заказчика)</span><input class="input" name="company" placeholder="ООО «…»"></label>
+  </form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="member-form">{{ icon('check', 15) }}Сохранить</button></div>
+</dialog>
+
+{% else %}
+<form method="post" action="/admin/ai" class="grid split" style="align-items: start">
+  <div class="panel">
+    <div class="panel-head"><h3>Модель</h3>{% if ai_ready %}<span class="chip tone s-active spacer"><span class="dot"></span>включён</span>{% else %}<span class="chip spacer">не настроен</span>{% endif %}</div>
+    <div class="panel-body stack-sm" style="gap: 14px">
+      <p class="small muted">Любой сервис с протоколом OpenAI: облачный шлюз или своя модель. Ключ хранится в базе портала и наружу не отдаётся.</p>
+      <label class="field"><span class="label">Адрес API</span><input class="input mono" name="base_url" value="{{ ai_cfg.base_url }}" placeholder="https://api.example.com/v1" inputmode="url"></label>
+      <div class="fgrid">
+        <label class="field"><span class="label">Модель</span><input class="input mono" name="model" value="{{ ai_cfg.model }}" placeholder="gpt-4.1, claude-…"></label>
+        <label class="field"><span class="label">Быстрая модель для сводок</span><input class="input mono" name="fast_model" value="{{ ai_cfg.fast_model }}" placeholder="необязательно"></label>
+      </div>
+      <label class="field"><span class="label">Ключ API</span><input class="input mono" name="api_key" type="password" autocomplete="off" placeholder="{{ ai_cfg.masked or 'sk-…' }}">
+        <span class="hint">{% if ai_cfg.key_set %}Ключ сохранён ({{ ai_cfg.masked }}). Пустое поле — оставить прежний.{% else %}Для локальных моделей можно без ключа.{% endif %}</span></label>
+      <label class="field"><span class="label">Указания помощнику</span><textarea class="textarea" name="prompt" data-autosize rows="3" placeholder="Например: отвечай с примерами из наших проектов; оценки задач — в часах, не больше 8 ч на задачу.">{{ ai_cfg.prompt }}</textarea></label>
+    </div>
+    <div class="panel-foot row-wrap" style="gap: 8px">
+      <button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button>
+      <button class="btn btn-ghost" type="submit" name="test" value="1">{{ icon('spark', 15) }}Сохранить и проверить</button>
+      {% if ai_cfg.key_set %}<button class="btn btn-danger btn-sm spacer" type="submit" name="forget" value="1" data-confirm="Удалить ключ API?">Удалить ключ</button>{% endif %}
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h3>Кому доступен</h3></div>
+    <div class="panel-body stack-sm" style="gap: 12px">
+      {% for k in ['head', 'lead', 'member'] %}
+      <label class="toggle-row" style="padding: 4px 0"><span class="grow"><b>{{ roles[k] }}</b></span><span class="switch"><input type="checkbox" name="roles" value="{{ k }}" {{ 'checked' if k in ai_cfg.roles }}><i></i></span></label>
+      {% endfor %}
+      <label class="field"><span class="label">Запросов в день на человека</span><input class="input mono" name="daily" value="{{ ai_cfg.daily }}" inputmode="numeric"><span class="hint">0 — без ограничения</span></label>
+      <hr>
+      <span class="label-mono">Запросы за 7 дней</span>
+      {% for m in members if load[m.id].ai %}<div class="row small"><span class="grow truncate">{{ m.name }}</span><span class="mono">{{ load[m.id].ai }}</span></div>
+      {% else %}<p class="small faint">Пока никто не спрашивал.</p>{% endfor %}
+    </div>
+  </div>
+</form>
+{% endif %}
 {% endblock %}
