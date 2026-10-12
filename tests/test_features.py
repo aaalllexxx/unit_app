@@ -522,15 +522,70 @@ class SupportSectionTest(unittest.TestCase):
         with M.Session() as s:
             self.assertIsNone(s.get(M.SupportTicket, tid))
 
-    def test_app_lock_elements(self):
+
+class SettingsAndLockTest(unittest.TestCase):
+    """Настройки человека и код приложения (решает сервер)."""
+
+    def test_settings_save_prefs_and_mute(self):
+        c = T.client("m1")
+        self.assertEqual(c.get("/settings").status_code, 200)
+        c.post("/settings", data={"haptics": "1", "notify_email": "1", "kind:task": "1", "kind:info": "1"}, headers=H)
+        with M.Session() as s:
+            m = s.get(M.Member, "m1")
+            self.assertEqual(set(m.prefs["mute"]), {"deadline", "blocker", "support"})
+            self.assertTrue(m.notify_email)
+        with T.app.test_request_context():
+            import settings
+            self.assertTrue(settings.muted("m1", "blocker"))
+            self.assertFalse(settings.muted("m1", "task"))
+        c.post("/settings", data={"haptics": "1", "notify_email": "1", **{f"kind:{k}": "1" for k, _, _ in
+                                                                        __import__("settings").KINDS}}, headers=H)
+
+    def test_token_section_talks_to_unit_id(self):
+        import unitid
+        calls = []
+        saved = unitid.tokens, unitid.token_create, unitid.token_revoke
+        unitid.tokens = lambda uid: [{"id": "pt-1", "name": "Скрипт", "prefix": "unit_pat_abc", "scopes": ["lab:read"],
+                                      "created": "12.10.2026", "expires": "", "used": ""}]
+        unitid.token_create = lambda uid, name, scopes, days: calls.append((uid, name, scopes, days)) or {"token": "unit_pat_SECRET"}
+        unitid.token_revoke = lambda uid, tid: calls.append(("revoke", uid, tid))
+        try:
+            c = T.client("m1")
+            self.assertIn("Скрипт", c.get("/settings").get_data(as_text=True))
+            page = c.post("/settings/token", data={"name": "Отчёт", "level": "write", "days": "30"}, headers=H)
+            self.assertIn("unit_pat_SECRET", page.get_data(as_text=True))           # показан один раз
+            self.assertEqual(calls[0], ("m1", "Отчёт", ["lab:read", "lab:write"], 30))
+            c.post("/settings/token/pt-1/revoke", headers=H)
+            self.assertEqual(calls[1], ("revoke", "m1", "pt-1"))
+        finally:
+            unitid.tokens, unitid.token_create, unitid.token_revoke = saved
+
+    def test_app_lock_is_decided_by_server(self):
         c = T.client("h")
-        r = c.get("/home")
-        self.assertEqual(r.status_code, 200)
-        page = r.get_data(as_text=True)
-        self.assertIn('id="unit-app-lock"', page)
-        self.assertIn('id="unit-pin-setup"', page)
-        self.assertIn('data-lock-app', page)
-        self.assertIn('data-change-pin', page)
+        page = c.get("/home").get_data(as_text=True)
+        self.assertNotIn('id="unit-app-lock"', page)                   # во вкладке браузера кода нет
+        c.set_cookie("unit_app", "1")
+        self.assertIn('data-lock="setup"', c.get("/home").get_data(as_text=True))
+        self.assertTrue(c.post("/lock/pin", json={"pin": "582047"}, headers=H).get_json()["ok"])
+        self.assertIn('data-lock="on"', c.get("/home").get_data(as_text=True))
+        with c.session_transaction() as sess:
+            sess["seen"] = 0                                            # давно не открывали
+        locked = c.get("/projects").get_data(as_text=True)
+        self.assertIn('data-lock="locked"', locked)
+        self.assertNotIn("Портал записи", locked)                      # данных на экране кода нет
+        self.assertEqual(c.get(f"/api/task/1", headers={"Accept": "application/json"}).status_code, 423)
+        self.assertEqual(c.post("/lock/unlock", json={"pin": "111112"}, headers=H).status_code, 400)
+        self.assertTrue(c.post("/lock/unlock", json={"pin": "582047"}, headers=H).get_json()["ok"])
+        self.assertEqual(c.get("/projects").status_code, 200)
+        # Смена кода — только с текущим
+        self.assertEqual(c.post("/lock/pin", json={"pin": "739104", "current": "000000"}, headers=H).status_code, 400)
+        self.assertTrue(c.post("/lock/pin", json={"pin": "739104", "current": "582047"}, headers=H).get_json()["ok"])
+        # Пять ошибок — выход
+        c.post("/lock/now", headers=H)
+        for _ in range(4):
+            c.post("/lock/unlock", json={"pin": "000003"}, headers=H)
+        self.assertTrue(c.post("/lock/unlock", json={"pin": "000003"}, headers=H).get_json()["logout"])
+        self.assertEqual(c.get("/projects").status_code, 302)
 
 
 if __name__ == "__main__":

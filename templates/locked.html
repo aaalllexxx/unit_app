@@ -1,0 +1,20 @@
+{% from '_icons.html' import sprite %}
+<!doctype html>
+<html lang="ru" class="app-locked">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Лаборатория UNIT</title>
+  <meta name="theme-color" content="#f3f4f7">
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="{{ asset('/static/unit.css') }}">
+  <link rel="icon" href="/static/logo.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script src="{{ asset('/static/unit.js') }}" defer></script>
+</head>
+{# Приложение заблокировано (applock.py): только экран кода — данных на странице нет #}
+<body data-user-id="{{ me.id }}" data-lock="locked">
+{{ sprite() }}
+{% set lock_brand = 'Лаборатория' %}{% include '_app_lock.html' %}
+</body>
+</html>

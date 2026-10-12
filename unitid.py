@@ -7,6 +7,8 @@
 * pull — раз в 2 минуты забираем аккаунты: имена, почты и теги у тех, кто уже
   есть в лаборатории, и новых людей с тегами, на которые есть правило.
 * services — список сервисов UNIT для меню (из /api/services, кеш 10 минут).
+* tokens — личные токены API лаборатории: выпускает и хранит UNIT ID (одна система
+  токенов для всех сервисов), портал просит его служебным ключом от имени человека.
 """
 
 import base64
@@ -15,6 +17,7 @@ import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import List
 
@@ -41,6 +44,42 @@ def _call(method: str, path: str, data=None) -> dict:
 
 def enabled() -> bool:
     return bool(CLIENT_ID and CLIENT_SECRET)
+
+
+class UnitIdError(Exception):
+    """UNIT ID не ответил или отказал — понятным текстом."""
+
+
+def _service(method: str, path: str, data=None) -> dict:
+    if not enabled():
+        raise UnitIdError("Портал не связан с UNIT ID — токены выпускать некому")
+    try:
+        return _call(method, path, data)
+    except urllib.error.HTTPError as error:
+        try:
+            detail = json.loads(error.read().decode() or "{}").get("error_description") or ""
+        except ValueError:
+            detail = ""
+        if error.code in (401, 403):
+            raise UnitIdError("UNIT ID не разрешил порталу выпускать токены — администратор UNIT ID "
+                              "даёт приложению лаборатории право «tokens»") from error
+        raise UnitIdError(detail or f"UNIT ID ответил ошибкой {error.code}") from error
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        raise UnitIdError("UNIT ID не ответил — попробуйте через минуту") from error
+
+
+def tokens(user_id: str) -> list:
+    """Токены человека, которые выпустила лаборатория: без самих токенов, только приметы."""
+    return _service("GET", f"/api/service/tokens?user_id={urllib.parse.quote(user_id)}").get("tokens") or []
+
+
+def token_create(user_id: str, name: str, scopes: List[str], days: int) -> dict:
+    return _service("POST", "/api/service/tokens", {"user_id": user_id, "name": name, "scopes": list(scopes),
+                                                     "days": int(days)})
+
+
+def token_revoke(user_id: str, token_id: str) -> None:
+    _service("POST", f"/api/service/tokens/{urllib.parse.quote(str(token_id))}/revoke", {"user_id": user_id})
 
 
 def push_tags(member_id: str, add: List[str] = (), remove: List[str] = ()) -> bool:

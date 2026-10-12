@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}Новый токен — Лаборатория UNIT{% endblock %}
+{% block back %}/settings#api{% endblock %}
+{% block content %}
+<div class="panel center-card" style="max-width: 640px">
+  <div class="panel-body stack-sm" style="padding: 26px">
+    <span class="eyebrow">Токен API лаборатории</span>
+    <h1 style="font-size: 24px">{{ name }}</h1>
+    <p class="small muted">{{ level }} · срок: {{ days }}. Скопируйте токен сейчас — он показывается один раз. Потеряли — отзовите и получите новый.</p>
+    <div class="token-box"><code data-token>{{ token }}</code>
+      <button class="btn btn-primary btn-sm" type="button" data-copy="{{ token }}">{{ icon('copy', 14) }}Скопировать</button></div>
+    <pre class="small" style="margin: 6px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); overflow-x: auto; font: 12.5px/1.5 var(--mono)">curl -H "Authorization: Bearer {{ token[:14] }}…" https://app.labunit.ru/api/v1/projects</pre>
+    <p class="small faint">Токен действует от вашего имени и с вашими правами в лаборатории. Храните его как пароль: не публикуйте в репозиториях и чатах.</p>
+    <a class="btn btn-ghost" href="/settings#api" style="align-self: flex-start">{{ icon('check', 15) }}Готово, скопировал</a>
+  </div>
+</div>
+{% endblock %}

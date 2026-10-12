@@ -306,6 +306,19 @@ class AiMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
+class AppPin(Base):
+    """Код приложения (6 цифр) человека на устройстве: хеш PBKDF2, неверные попытки (applock.py)."""
+    __tablename__ = "app_pins"
+    __table_args__ = (UniqueConstraint("member_id", "device"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    device: Mapped[str] = mapped_column(String(64))                   # sha256 ключа устройства из cookie
+    pin_hash: Mapped[str] = mapped_column(String(200))
+    fails: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+
+
 class AiUsage(Base):
     __tablename__ = "ai_usage"
     __table_args__ = (UniqueConstraint("member_id", "day"),)

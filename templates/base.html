@@ -18,30 +18,12 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Лаборатория">
-  <script>
-    (function(){
-      try {
-        var u = "{{ me.id if me else '' }}";
-        if (!u) return;
-        var ua = navigator.userAgent || '';
-        var isMobile = /iPhone|iPod|Windows Phone/i.test(ua) || (/Android/i.test(ua) && /Mobile/i.test(ua)) || (window.matchMedia && window.matchMedia('(max-width: 820px) and (pointer: coarse)').matches);
-        if (!isMobile) return;
-        var locked = localStorage.getItem('unit_locked_' + u) === '1';
-        var lastAct = parseInt(localStorage.getItem('unit_last_act_' + u) || '0', 10);
-        var navTime = parseInt(sessionStorage.getItem('unit_nav_time') || '0', 10);
-        var isInternal = navTime && (Date.now() - navTime < 10000);
-        if (locked || (!isInternal && lastAct && (Date.now() - lastAct > 60000))) {
-          document.documentElement.classList.add('app-locked');
-        }
-      } catch(e) {}
-    })();
-  </script>
   <script src="{{ asset('/static/unit.js') }}" defer></script>
   {% if me and me.perms %}<script src="{{ asset('/static/lab.js') }}" defer></script>{% endif %}
   {% if ai_on %}<script src="{{ asset('/static/agent.js') }}" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
 </head>
-<body data-user-id="{{ me.id if me else '' }}" data-haptics="{{ '1' if haptics else '0' }}">
+<body data-user-id="{{ me.id if me else '' }}" data-haptics="{{ '1' if haptics else '0' }}" data-lock="{{ lock_mode }}">
 {{ sprite() }}
 {% block body %}
 {% set here = request.path %}
@@ -81,6 +63,7 @@
     {% if me %}
     <div class="side-foot">
       <div class="side-subnav">
+        <a class="side-sublink {{ 'on' if here.startswith('/settings') }}" href="/settings">{{ icon('settings', 16) }}<span class="full">Настройки</span></a>
         <a class="side-sublink {{ 'on' if here.startswith('/support') }}" href="/support">{{ icon('help', 16) }}<span class="full">Поддержка</span></a>
       </div>
       <div class="user-card">
@@ -132,6 +115,7 @@
       {% if can('admin.overview') %}<a href="/admin">{{ icon('chart', 22) }}Обзор</a>{% endif %}
       {% if can('page.admin') %}<a href="/access">{{ icon('key', 22) }}Доступы</a>{% endif %}
       {% if can('ai.settings') %}<a href="/admin/ai">{{ icon('settings', 22) }}ИИ лаборатории</a>{% endif %}
+      <a href="/settings">{{ icon('settings', 22) }}Настройки</a>
       <a href="/support">{{ icon('help', 22) }}Поддержка</a>
       {% for sv in services %}<a href="{{ sv.url }}">{{ icon(sv.icon, 22) }}{{ sv.name }}</a>{% endfor %}
       <a href="{{ issuer }}/apps">{{ icon('key', 22) }}UNIT ID</a>
@@ -146,12 +130,6 @@
       {% endfor %}
     </div>
     {% endif %}
-    <label class="toggle-row"><span class="grow"><b>Вибрация</b><span>Лёгкий отклик на нажатия и действия</span></span>
-      <span class="switch"><input type="checkbox" data-haptics-toggle {{ 'checked' if haptics }}><i></i></span></label>
-    <div style="display: flex; gap: 8px; margin-top: 10px">
-      <button class="btn btn-quiet btn-sm" type="button" data-change-pin style="flex: 1">{{ icon('key', 16) }}Сменить PIN</button>
-      <button class="btn btn-quiet btn-sm" type="button" data-lock-app style="flex: 1">{{ icon('lock', 16) }}Заблокировать</button>
-    </div>
   </div>
   <div class="sheet-foot"><a class="btn btn-ghost" href="/logout">{{ icon('logout', 16) }}Выйти</a></div>
 </dialog>
@@ -182,6 +160,6 @@
 {% endif %}
 {% endif %}
 {% endblock %}
-{% if me %}{% include '_app_lock.html' %}{% endif %}
+{% if me and lock_mode %}{% set lock_brand = 'Лаборатория' %}{% include '_app_lock.html' %}{% endif %}
 </body>
 </html>

@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}Настройки — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">{{ m.name }}</span>
+    <h1>Настройки</h1>
+    <p class="sub">Уведомления, приложение на этом устройстве, вход и защита, токены API лаборатории.</p>
+  </div>
+</div>
+
+<nav class="set-nav" aria-label="Разделы настроек">
+  <a href="#notify">{{ icon('bell', 15) }}Уведомления</a>
+  <a href="#app">{{ icon('desk', 15) }}Приложение</a>
+  <a href="#security">{{ icon('lock', 15) }}Вход и защита</a>
+  {% if can('ai.use') and ai_on %}<a href="/ai/settings">{{ icon('spark', 15) }}ИИ</a>{% endif %}
+  {% if can('page.projects') or can('task.work') %}<a href="#api">{{ icon('terminal', 15) }}API</a>{% endif %}
+</nav>
+
+<form method="post" class="stack" style="gap: 18px">
+  <input type="hidden" name="section" value="notify">
+  <section class="panel" id="notify">
+    <div class="panel-head"><h3>Уведомления</h3></div>
+    <div class="panel-body stack-sm">
+      <div class="toggle-row" data-push-row>
+        <span class="grow"><b>Push на этом устройстве</b>
+          <span data-push-state>Проверяю, можно ли присылать уведомления…</span></span>
+        <span class="switch"><input type="checkbox" data-push-toggle disabled><i></i></span>
+      </div>
+      <label class="toggle-row"><span class="grow"><b>Письма на почту</b><span>{{ m.email or 'почта не указана' }} — о новых задачах, проектах и помехах</span></span>
+        <span class="switch"><input type="checkbox" name="notify_email" value="1" {{ 'checked' if m.notify_email }}><i></i></span></label>
+      <span class="label-mono" style="margin-top: 8px">Что присылать</span>
+      <p class="small faint">Выключенное не придёт ни пушем, ни письмом — но останется в колокольчике.</p>
+      {% for key, title, hint in kinds %}
+      <label class="toggle-row"><span class="grow"><b>{{ title }}</b><span>{{ hint }}</span></span>
+        <span class="switch"><input type="checkbox" name="kind:{{ key }}" value="1" {{ 'checked' if key not in mute }}><i></i></span></label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel" id="app">
+    <div class="panel-head"><h3>Приложение</h3></div>
+    <div class="panel-body stack-sm">
+      <label class="toggle-row"><span class="grow"><b>Вибрация</b><span>Лёгкий отклик на нажатия и действия (на телефонах, которые это умеют)</span></span>
+        <span class="switch"><input type="checkbox" name="haptics" value="1" data-haptics-live {{ 'checked' if haptics }}><i></i></span></label>
+      <div class="toggle-row">
+        <span class="grow"><b>Кеш приложения</b><span data-cache-state>Считаю, сколько места занято…</span></span>
+        <button class="btn btn-ghost btn-sm" type="button" data-cache-clear>{{ icon('refresh', 14) }}Очистить</button>
+      </div>
+      <p class="small faint">В кеше — оформление и значки, чтобы портал открывался быстро и показывал «Нет связи» без интернета. Личные данные не кешируются. Очистка безопасна: всё скачается заново.</p>
+    </div>
+    <div class="panel-foot"><button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button></div>
+  </section>
+</form>
+
+<section class="panel" id="security" style="margin-top: 18px">
+  <div class="panel-head"><h3>Вход и защита</h3></div>
+  <div class="panel-body stack-sm">
+    <div class="toggle-row">
+      <span class="grow"><b>Пароль</b><span>Один пароль для всех сервисов UNIT — меняется в UNIT ID. Там же двухфакторная защита и устройства.</span></span>
+      <a class="btn btn-ghost btn-sm" href="{{ issuer }}/settings#password">{{ icon('external', 14) }}Сменить в UNIT ID</a>
+    </div>
+    <div class="toggle-row">
+      <span class="grow"><b>Код приложения</b>
+        <span>{% if lock_mode == 'on' %}Включён на этом устройстве: если не открывать приложение 5 минут, оно попросит 6-значный код. Пять ошибок — выход из аккаунта.
+          {% elif lock_mode == 'setup' %}Приложение попросит придумать код.
+          {% else %}Работает, когда портал открыт как приложение с экрана «Домой»: там код защищает вход, если телефон попал в чужие руки.{% endif %}</span></span>
+      {% if lock_mode == 'on' %}
+      <span class="row-wrap" style="gap: 6px">
+        <button class="btn btn-ghost btn-sm" type="button" data-change-pin>{{ icon('key', 14) }}Сменить</button>
+        <button class="btn btn-quiet btn-sm" type="button" data-pin-off>Отключить</button>
+        <button class="btn btn-quiet btn-sm" type="button" data-lock-app>{{ icon('lock', 14) }}Заблокировать</button>
+      </span>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{% if can('page.projects') or can('task.work') %}
+<section class="panel" id="api" style="margin-top: 18px">
+  <div class="panel-head"><h3>Токены API лаборатории</h3><a class="tiny spacer" href="https://docs.labunit.ru/lab-api" target="_blank" rel="noopener">Документация API</a></div>
+  <div class="panel-body stack-sm">
+    <p class="small muted">Токен даёт скриптам и интеграциям доступ к API лаборатории от вашего имени и с вашими правами. Выпускает и хранит его UNIT ID; сам токен показывается один раз. Отозвать — здесь или в UNIT ID.</p>
+    {% if token_error %}<p class="small" style="color: var(--warn)">{{ token_error }}</p>{% endif %}
+    {% if tokens %}
+    <div class="rows" style="border: 1px solid var(--line); border-radius: 12px">
+      {% for t in tokens %}
+      <div class="r">
+        <span class="grow"><b class="small">{{ t.name }}</b>
+          <span class="tiny faint mono" style="display: block">{{ t.prefix }}… · {{ 'чтение и изменения' if 'lab:write' in t.scopes else 'только чтение' }} · создан {{ t.created }}{% if t.expires %} · до {{ t.expires }}{% endif %}{% if t.used %} · последний запрос {{ t.used }}{% endif %}</span></span>
+        <form method="post" action="/settings/token/{{ t.id }}/revoke"><button class="btn btn-quiet btn-sm" type="submit" data-confirm="Отозвать токен «{{ t.name }}»? Скрипты с ним перестанут работать.">Отозвать</button></form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <form method="post" action="/settings/token" class="fgrid" style="align-items: end">
+      <label class="field"><span class="label">Название</span><input class="input" name="name" maxlength="80" placeholder="Например: отчёт в Google Таблицы"></label>
+      <label class="field"><span class="label">Права</span><select class="select" name="level">
+        {% for key, v in levels.items() %}{% if key == 'read' or can('task.work') %}<option value="{{ key }}">{{ v[0] }}</option>{% endif %}{% endfor %}</select></label>
+      <label class="field"><span class="label">Срок</span><select class="select" name="days">
+        {% for key, title in days.items() %}<option value="{{ key }}" {{ 'selected' if key == '90' }}>{{ title }}</option>{% endfor %}</select></label>
+      <button class="btn btn-primary" type="submit">{{ icon('plus', 15) }}Получить токен</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var U = window.UNIT, LAB = window.LAB;
+  /* Push на этом устройстве: подписка в браузере + на сервере */
+  var row = document.querySelector('[data-push-row]');
+  var box = document.querySelector('[data-push-toggle]');
+  var state = document.querySelector('[data-push-state]');
+  var b64 = function (s) { var p = '='.repeat((4 - s.length % 4) % 4); var raw = atob((s + p).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); };
+  var reg = null;
+  var show = function (text, on, enabled) { state.textContent = text; box.checked = !!on; box.disabled = !enabled; };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    show('Этот браузер не умеет push. На iPhone — откройте портал с экрана «Домой».', false, false);
+  } else if (Notification.permission === 'denied') {
+    show('Уведомления запрещены в настройках браузера для этого сайта — разрешите их там.', false, false);
+  } else {
+    navigator.serviceWorker.ready.then(function (r) { reg = r; return r.pushManager.getSubscription(); }).then(function (sub) {
+      show(sub ? 'Включено: уведомления приходят, даже когда портал закрыт' : 'Выключено на этом устройстве', !!sub, true);
+    }).catch(function () { show('Не получилось проверить подписку', false, false); });
+  }
+  if (box) box.addEventListener('change', function () {
+    box.disabled = true;
+    if (box.checked) {
+      LAB.api('/api/push/key').then(function (d) {
+        return Notification.requestPermission().then(function (p) {
+          if (p !== 'granted') throw new Error('Уведомления не разрешены');
+          return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(d.key) });
+        });
+      }).then(function (sub) { return LAB.api('/api/push/subscribe', { subscription: sub.toJSON() }); })
+        .then(function () { show('Включено: уведомления приходят, даже когда портал закрыт', true, true); U.haptic('success'); })
+        .catch(function (err) { show(err.message || 'Не получилось включить', false, true); });
+    } else {
+      reg.pushManager.getSubscription().then(function (sub) {
+        if (!sub) return null;
+        return LAB.api('/api/push/unsubscribe', { endpoint: sub.endpoint }).then(function () { return sub.unsubscribe(); });
+      }).then(function () { show('Выключено на этом устройстве', false, true); })
+        .catch(function (err) { show(err.message || 'Не получилось выключить', true, true); });
+    }
+  });
+  /* Вибрация — сразу, сохраняется кнопкой «Сохранить» */
+  var hap = document.querySelector('[data-haptics-live]');
+  if (hap) hap.addEventListener('change', function () { U.setHaptics(hap.checked); });
+  /* Кеш приложения: сколько занято и очистка */
+  var cacheState = document.querySelector('[data-cache-state]');
+  var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; };
+  var measure = function () {
+    if (!(navigator.storage && navigator.storage.estimate)) { cacheState.textContent = 'Браузер не сообщает, сколько занято'; return; }
+    navigator.storage.estimate().then(function (e) {
+      var used = (e.usageDetails && e.usageDetails.caches) || e.usage || 0;
+      cacheState.textContent = 'Занято ' + mb(used) + (e.quota ? ' из доступных ' + mb(e.quota) : '');
+    });
+  };
+  measure();
+  document.querySelector('[data-cache-clear]').addEventListener('click', function () {
+    var jobs = [];
+    if (window.caches) jobs.push(caches.keys().then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); }));
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('clear-cache');
+    Promise.all(jobs).then(function () {
+      U.toast('Кеш очищен — оформление скачается заново', 'ok');
+      setTimeout(measure, 600);
+    });
+  });
+});
+</script>
+{% endblock %}

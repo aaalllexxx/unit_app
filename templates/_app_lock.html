@@ -1,12 +1,13 @@
 {% from '_icons.html' import icon, logo %}
-{# ── Оверлей блокировки приложения (PIN-код) ── #}
+{# Код приложения (applock.py, static/unit.js): экран ввода, когда сессия заблокирована,
+   и окно «придумайте / смените / отключите код». Проверяет код сервер. #}
 <div id="unit-app-lock" class="unit-lock-overlay" hidden aria-modal="true" role="dialog" aria-label="Блокировка приложения">
   <div class="unit-lock-box">
     <div class="unit-lock-brand">
-      <span class="unit-lock-logo">{{ logo('ID' if 'ID' in (title or '') or 'UNIT ID' in (title or '') else 'Лаборатория') }}</span>
+      <span class="unit-lock-logo">{{ logo(lock_brand or 'Лаборатория') }}</span>
     </div>
-    <h2 class="unit-lock-title">Сессия заблокирована</h2>
-    <p class="unit-lock-sub" id="unit-lock-msg">Введите 6-значный код доступа</p>
+    <h2 class="unit-lock-title">Приложение заблокировано</h2>
+    <p class="unit-lock-sub" id="unit-lock-msg">Введите код приложения</p>
     
     <div class="unit-pin-dots" id="unit-lock-dots" aria-hidden="true">
       <span class="unit-pin-dot"></span>
@@ -39,7 +40,7 @@
     </div>
 
     <div class="unit-lock-foot">
-      <a href="/logout" class="unit-lock-forgot" id="unit-lock-logout">Забыли код? Выйти из аккаунта</a>
+      <a href="/logout" class="unit-lock-forgot" id="unit-lock-logout">Забыли код? Выйти и войти заново</a>
     </div>
   </div>
 </div>
@@ -48,7 +49,7 @@
 <div id="unit-pin-setup" class="unit-lock-overlay" hidden aria-modal="true" role="dialog" aria-label="Установка кода доступа">
   <div class="unit-lock-box">
     <div class="unit-lock-brand">
-      <span class="unit-lock-logo">{{ logo('ID' if 'ID' in (title or '') or 'UNIT ID' in (title or '') else 'Лаборатория') }}</span>
+      <span class="unit-lock-logo">{{ logo(lock_brand or 'Лаборатория') }}</span>
     </div>
     <h2 class="unit-lock-title" id="unit-setup-title">Придумайте код доступа</h2>
     <p class="unit-lock-sub" id="unit-setup-msg">Шестизначный пароль для защиты сессии</p>
@@ -89,7 +90,7 @@
     </div>
 
     <div class="unit-lock-foot">
-      <span class="unit-lock-hint" id="unit-setup-hint">Код защищает сессию при выходе из приложения или неактивности</span>
+      <span class="unit-lock-hint" id="unit-setup-hint">Код хранится на сервере зашифрованным и спрашивается, если приложение не открывали 5 минут</span>
       <button type="button" class="unit-lock-forgot" id="unit-setup-cancel" style="display: none">Отмена</button>
     </div>
   </div>

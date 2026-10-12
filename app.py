@@ -251,7 +251,9 @@ def notice(member_id: str, text: str, link: str = "", kind: str = "info", key: s
     db().add(M.Notice(member_id=member_id, key=key[:120], kind=kind, text=text[:400], link=link[:300]))
     db().commit()
     import push
-    push.send_later(member_id, "Лаборатория UNIT", text[:240], link or "/home", key[:60])
+    import settings
+    if not settings.muted(member_id, kind):                 # отключённое — только в колокольчике
+        push.send_later(member_id, "Лаборатория UNIT", text[:240], link or "/home", key[:60])
 
 
 def notify(member_id: str, subject: str, text: str, link: str = "", kind: str = "info", key: str = "") -> None:
@@ -260,6 +262,9 @@ def notify(member_id: str, subject: str, text: str, link: str = "", kind: str = 
     if person and person.id != getattr(g.get("me"), "id", None):
         notice(person.id, subject, link, kind, key)
     if not SMTP_HOST or not person or not person.email or not person.notify_email or person.id == getattr(g.get("me"), "id", None):
+        return
+    import settings
+    if settings.muted(person.id, kind):
         return
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = MAIL_FROM, person.email, subject
@@ -340,6 +345,7 @@ def callback():
     session.clear()
     session.permanent = True
     session["mid"] = person.id
+    session["seen"] = int(datetime.now().timestamp())     # только что вошёл — код приложения не спрашиваем
     nxt = saved.get("next") or "/home"
     return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else "/home")
 
@@ -1436,6 +1442,8 @@ import rights  # noqa: E402,F401
 import support  # noqa: E402,F401
 import agent  # noqa: E402
 import agent_tools  # noqa: E402,F401
+import applock  # noqa: E402,F401
+import settings  # noqa: E402,F401
 import unitid  # noqa: E402
 
 agent.migrate_old_messages()
