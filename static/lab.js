@@ -42,18 +42,35 @@
             .replace(/\[([^\]]+)\]\((\/[^)\s]*|https?:\/\/[^)\s]+)\)/g, '<a href="$2" class="strong" style="color: var(--accent)">$1</a>');
     }
     function md(source) {
-        var out = [], list = null, code = null;
+        var out = [], list = null, code = null, codeLang = '';
         var flush = function () { if (list) { out.push('</' + list + '>'); list = null; } };
         String(source || '').split('\n').forEach(function (raw) {
             if (code !== null) {
-                if (/^```/.test(raw.trim())) { out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>'); code = null; }
-                else code.push(raw);
+                if (/^```/.test(raw.trim())) {
+                    var codeText = code.join('\n');
+                    if (codeText.trim()) {
+                        out.push('<div class="code-block"><div class="cb-header"><span class="cb-lang">' + esc(codeLang || 'код') + '</span><button class="cb-copy" type="button" data-copy-code>' + icon('copy', 12) + '<span>Копировать</span></button></div><pre><code>' + esc(codeText) + '</code></pre></div>');
+                    }
+                    code = null;
+                    codeLang = '';
+                } else {
+                    code.push(raw);
+                }
                 return;
             }
-            if (/^```/.test(raw.trim())) { flush(); code = []; return; }
+            var codeStart = raw.trim().match(/^```([a-zA-Z0-9_-]*)/);
+            if (codeStart) {
+                flush();
+                code = [];
+                codeLang = codeStart[1] || '';
+                return;
+            }
             var line = esc(raw);
+            if (/^\s*[-*_]{3,}\s*$/.test(line)) { flush(); out.push('<hr class="md-hr">'); return; }
             var m;
-            if ((m = line.match(/^\s*#{1,4}\s+(.*)$/))) { flush(); out.push('<h4>' + inline(m[1]) + '</h4>'); return; }
+            if ((m = line.match(/^\s*#{1,2}\s+(.*)$/))) { flush(); out.push('<h3>' + inline(m[1]) + '</h3>'); return; }
+            if ((m = line.match(/^\s*#{3}\s+(.*)$/))) { flush(); out.push('<h4>' + inline(m[1]) + '</h4>'); return; }
+            if ((m = line.match(/^\s*#{4,}\s+(.*)$/))) { flush(); out.push('<h5>' + inline(m[1]) + '</h5>'); return; }
             if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) {
                 if (list !== 'ul') { flush(); out.push('<ul>'); list = 'ul'; }
                 out.push('<li>' + inline(m[1]) + '</li>');
@@ -67,7 +84,12 @@
             flush();
             if (line.trim()) out.push('<p>' + inline(line) + '</p>');
         });
-        if (code !== null) out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>');
+        if (code !== null) {
+            var restCode = code.join('\n');
+            if (restCode.trim()) {
+                out.push('<div class="code-block"><div class="cb-header"><span class="cb-lang">' + esc(codeLang || 'код') + '</span><button class="cb-copy" type="button" data-copy-code>' + icon('copy', 12) + '<span>Копировать</span></button></div><pre><code>' + esc(restCode) + '</code></pre></div>');
+            }
+        }
         flush();
         return out.join('');
     }
@@ -153,6 +175,18 @@
             if (stopBtn) { self.stop(); return; }
             var apply = event.target.closest('[data-apply]');
             if (apply) self.apply(apply);
+            var copyCodeBtn = event.target.closest('[data-copy-code]');
+            if (copyCodeBtn) {
+                var cb = copyCodeBtn.closest('.code-block');
+                var codeEl = cb && cb.querySelector('code');
+                if (codeEl) {
+                    navigator.clipboard.writeText(codeEl.innerText).then(function () {
+                        U.toast('Код скопирован', 'ok');
+                        U.haptic('tap');
+                    });
+                }
+                return;
+            }
             var copyBtn = event.target.closest('[data-msg-copy]');
             if (copyBtn) {
                 var textToCopy = (copyBtn.closest('.bubble').querySelector('.md') || {}).innerText || '';
@@ -221,14 +255,13 @@
         if (this.empty) this.empty.hidden = true;
         var el = document.createElement('div');
         el.className = 'msg user is-queued';
-        el.innerHTML = '<div><div class="bubble"><span class="chip-queue">В очереди</span>' + esc(text) + '</div></div>';
+        el.innerHTML = '<div class="user-bubble-wrap"><div class="bubble"><span class="chip-queue">В очереди</span>' + esc(text) + '</div></div>';
         this.log.appendChild(el);
         return el;
     };
     Chat.prototype.stop = function () {
         if (this.abortController) {
             this.abortController.abort();
-            this.abortController = null;
         }
         this.busy = false;
         this.queue = [];
@@ -252,7 +285,7 @@
         el.className = 'msg ' + (m.role === 'user' ? 'user' : 'ai');
         el.setAttribute('data-id', m.id || '');
         if (m.role === 'user') {
-            el.innerHTML = '<div><div class="bubble">' + esc(m.text) + '</div></div>';
+            el.innerHTML = '<div class="user-bubble-wrap"><div class="bubble">' + esc(m.text) + '</div></div>';
         } else {
             var acts = (m.actions || []).map(function (a, i) {
                 var state = a.applied ? ' is-done' : a.error ? ' is-bad' : '';
@@ -265,10 +298,15 @@
             var many = (m.actions || []).filter(function (a) { return !a.applied; }).length > 1;
             var cleanText = (m.text || '')
                 .replace(/```(?:actions|json|tool_calls|tools)?\s*\[\s*\{[\s\S]*?\]\s*```/gi, '')
-                .replace(/```actions[\s\S]*?```/gi, '')
+                .replace(/```(?:actions|json|tool_calls|tools)[\s\S]*?```/gi, '')
                 .replace(/\[\s*\{\s*"type"[\s\S]*$/gi, '')
+                .replace(/```\s*```/g, '')
                 .trim();
-            el.innerHTML = '<span class="ai-mark" style="width: 26px; height: 26px; border-radius: 8px">' + icon('spark', 14) + '</span>'
+            el.innerHTML = '<div class="ai-msg-header">'
+                + '<span class="ai-mark sm">' + icon('spark', 14) + '</span>'
+                + '<span class="ai-msg-name">UNIT AI</span>'
+                + '<span class="ai-msg-badge">Агент</span>'
+                + '</div>'
                 + '<div class="bubble"><div class="md">' + md(cleanText) + '</div>'
                 + (acts ? '<div class="ai-acts"><div class="ai-acts-head"><span>' + icon('spark', 13) + 'Инструменты агента</span>'
                     + (many ? '<button class="btn btn-ghost btn-xs" type="button" data-apply="all" data-msg="' + m.id + '">Применить всё</button>' : '') + '</div>' + acts + '</div>' : '')

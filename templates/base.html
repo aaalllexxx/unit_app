@@ -23,6 +23,9 @@
       try {
         var u = "{{ me.id if me else '' }}";
         if (!u) return;
+        var ua = navigator.userAgent || '';
+        var isMobile = /iPhone|iPod|Windows Phone/i.test(ua) || (/Android/i.test(ua) && /Mobile/i.test(ua)) || (window.matchMedia && window.matchMedia('(max-width: 820px) and (pointer: coarse)').matches);
+        if (!isMobile) return;
         var locked = localStorage.getItem('unit_locked_' + u) === '1';
         var lastAct = parseInt(localStorage.getItem('unit_last_act_' + u) || '0', 10);
         var navTime = parseInt(sessionStorage.getItem('unit_nav_time') || '0', 10);

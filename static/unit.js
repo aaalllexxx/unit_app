@@ -611,7 +611,27 @@
             resetIdleTimer();
         }
 
+        function isMobileDevice() {
+            var ua = navigator.userAgent || '';
+            var isPhone = /iPhone|iPod|Windows Phone/i.test(ua) || (/Android/i.test(ua) && /Mobile/i.test(ua));
+            if (isPhone) return true;
+            if (window.matchMedia && window.matchMedia('(max-width: 820px) and (pointer: coarse)').matches) {
+                if (window.matchMedia('(pointer: fine)').matches && window.matchMedia('(min-width: 900px)').matches) return false;
+                return true;
+            }
+            return false;
+        }
+
         AppLock.init = function () {
+            if (!isMobileDevice()) {
+                root.classList.remove('app-locked');
+                var oLock = document.getElementById('unit-app-lock');
+                if (oLock) { oLock.hidden = true; oLock.style.display = 'none'; }
+                var oSetup = document.getElementById('unit-pin-setup');
+                if (oSetup) { oSetup.hidden = true; oSetup.style.display = 'none'; }
+                return;
+            }
+
             uid = (document.body && document.body.getAttribute('data-user-id')) || (window.UNIT && window.UNIT.userId) || '';
             if (!uid) return;
 

@@ -38,14 +38,21 @@
     <div class="panel-foot tiny faint">Осталось запросов сегодня: {{ left if left < 100000 else 'без ограничения' }}</div>
   </aside>
   <main class="panel chat-box">
-    <div class="panel-head" style="align-items: center; gap: 10px">
-      <span class="ai-mark">{{ icon('spark', 15) }}</span>
-      <h3 class="truncate grow" style="font-size: 15px; margin: 0">{{ current_title }}</h3>
-      {% if thread.startswith('c_') %}
-      <button class="btn btn-quiet btn-sm" type="button" data-chat-del="{{ thread }}">{{ icon('trash', 14) }}Удалить чат</button>
-      {% else %}
-      <button class="btn btn-quiet btn-sm" type="button" data-chat-clear>{{ icon('trash', 14) }}Очистить</button>
-      {% endif %}
+    <div class="panel-head chat-head">
+      <div class="chat-head-left">
+        <span class="ai-mark sm">{{ icon('spark', 15) }}</span>
+        <div class="chat-head-titles">
+          <h3 class="truncate" style="font-size: 15px; margin: 0; font-weight: 600">{{ current_title }}</h3>
+          <span class="ai-head-pill">UNIT Agent</span>
+        </div>
+      </div>
+      <div class="chat-head-actions">
+        {% if thread.startswith('c_') %}
+        <button class="btn btn-quiet btn-sm" type="button" data-chat-del="{{ thread }}">{{ icon('trash', 14) }}Удалить чат</button>
+        {% else %}
+        <button class="btn btn-quiet btn-sm" type="button" data-chat-clear>{{ icon('trash', 14) }}Очистить</button>
+        {% endif %}
+      </div>
     </div>
     {% set chat_thread = thread %}{% set chat_ask = ask %}
     {% include '_chat.html' %}
