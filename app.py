@@ -471,13 +471,14 @@ def person(mid):
         contacts = dict(member.contacts or {})
         contacts["telegram"] = f.get("telegram", "").strip()[:60]
         contacts["phone"] = f.get("phone", "").strip()[:30]
-        if "github" in f:
-            contacts["github"] = f.get("github", "").strip().lstrip("@")[:80]
-        if f.get("github_token"):
-            contacts["github_token"] = f.get("github_token", "").strip()[:150]
-        if f.get("github_unlink") == "1":
-            contacts.pop("github", None)
-            contacts.pop("github_token", None)
+        if own:                                   # GitHub и его токен — только сам человек
+            if "github" in f:
+                contacts["github"] = f.get("github", "").strip().lstrip("@")[:80]
+            if f.get("github_token"):
+                contacts["github_token"] = f.get("github_token", "").strip()[:150]
+            if f.get("github_unlink") == "1":
+                contacts.pop("github", None)
+                contacts.pop("github_token", None)
         member.contacts = contacts
         member.skills = _skills_from(f)
         if head:

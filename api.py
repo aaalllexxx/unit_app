@@ -25,39 +25,32 @@ import models as M
 api_bp = Blueprint("lab_api", __name__, url_prefix="/api/v1")
 
 ISSUER = os.environ.get("LAB_ISSUER", "https://auth.labunit.ru").rstrip("/")
-_TOKEN_CACHE = {}  # token -> {"user": dict, "expires": float}
+TOKEN_CACHE_TTL = 60
+_TOKEN_CACHE = {}  # sha256(токен) -> {"user": dict, "expires": float}
 
 
 def _verify_token(token: str) -> Optional[dict]:
-    """Проверяет токен в UNIT ID либо берёт из кратковременного кеша."""
+    """Проверяет токен в UNIT ID (userinfo) или берёт из кеша на минуту. Кеш — по хешу токена."""
+    import hashlib
+
     now = time.time()
-    cached = _TOKEN_CACHE.get(token)
+    key = hashlib.sha256(token.encode()).hexdigest()
+    cached = _TOKEN_CACHE.get(key)
     if cached and cached["expires"] > now:
         return cached["user"]
-
-    # Для тестовых окружений
-    if token.startswith("test-token-"):
-        user_info = {
-            "sub": token.replace("test-token-", ""),
-            "name": "Тестовый пользователь",
-            "email": "test@labunit.ru",
-            "scopes": ["openid", "lab:read", "lab:write"],
-        }
-        _TOKEN_CACHE[token] = {"user": user_info, "expires": now + 300}
-        return user_info
-
     try:
-        req = urllib.request.Request(
-            f"{ISSUER}/oauth/userinfo",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-        )
+        req = urllib.request.Request(f"{ISSUER}/oauth/userinfo",
+                                     headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as response:
             info = json.loads(response.read().decode())
-            _TOKEN_CACHE[token] = {"user": info, "expires": now + 300}
-            return info
-    except Exception as err:
-        print(f"[api] ошибка проверки токена: {err}", flush=True)
+    except Exception as err:  # noqa: BLE001 — 401 от UNIT ID, сеть
+        print(f"[api] токен не принят: {err}", flush=True)
         return None
+    if len(_TOKEN_CACHE) > 5000:
+        for k in [k for k, v in _TOKEN_CACHE.items() if v["expires"] <= now][:2500]:
+            _TOKEN_CACHE.pop(k, None)
+    _TOKEN_CACHE[key] = {"user": info, "expires": now + TOKEN_CACHE_TTL}
+    return info
 
 
 def get_db():
@@ -76,48 +69,34 @@ def require_auth(scope: str = "lab:read"):
 
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:].strip()
-                info = _verify_token(token)
+                info = _verify_token(token) if token else None
                 if not info or "sub" not in info:
                     return jsonify({"error": "invalid_token", "message": "Токен недействителен или истёк"}), 401
-                scopes = info.get("scopes") or ["openid", "lab:read", "lab:write"]
+                # Права токена — из UNIT ID: чтение — lab:read (или lab:write), запись — только lab:write
+                scopes = str(info.get("scope") or "").split()
                 member = get_db().get(M.Member, info["sub"])
-                if member is None:
-                    # Создаём карточку участника при первом API-входе
-                    member = M.Member(
-                        id=info["sub"],
-                        name=info.get("name") or info.get("email") or "API User",
-                        email=info.get("email") or "",
-                        role="member",
-                        tags=list(info.get("unit_tags") or []),
-                    )
-                    get_db().add(member)
-                    get_db().commit()
             elif g.get("me"):
-                member = g.me
-                scopes = ["openid", "lab:read", "lab:write"]
+                member = g.me                     # сессия портала (запросы со страниц)
+                scopes = ["lab:read", "lab:write"]
 
             if not member:
                 return jsonify({
                     "error": "unauthorized",
-                    "message": "Требуется заголовок Authorization: Bearer <ACCESS_TOKEN>",
+                    "message": "Требуется заголовок Authorization: Bearer <ACCESS_TOKEN> человека из лаборатории",
                 }), 401
-
-            # Проверка прав scope
-            if scope and scopes:
-                # Допускаем либо точный scope, либо lab:write для чтения, либо wildcard
-                if scope not in scopes and "lab:write" not in scopes and "lab" not in scopes and "*" not in scopes:
-                    # Если есть базовый openid и пользователь является сотрудником, разрешаем
-                    if not (("openid" in scopes or "profile" in scopes) and member.role != "pending"):
-                        return jsonify({
-                            "error": "insufficient_scope",
-                            "message": f"Недостаточно прав. Требуется scope: {scope}",
-                        }), 403
+            if scope and scope not in scopes and not (scope == "lab:read" and "lab:write" in scopes):
+                return jsonify({"error": "insufficient_scope",
+                                "message": f"У токена нет права {scope} — запросите его при входе через UNIT ID"}), 403
 
             # Резолвим права лаборатории
-            resolved = access.resolve(get_db(), member, "")
-            member.perms, member.limits = resolved["perms"], resolved["limits"]
-            member.views, member.view = resolved["views"], resolved["view"]
-            member.customer = access.is_customer(member)
+            if not getattr(member, "perms", None):
+                resolved = access.resolve(get_db(), member, "")
+                get_db().expunge(member)
+                member.perms, member.limits = resolved["perms"], resolved["limits"]
+                member.views, member.view = resolved["views"], resolved["view"]
+                member.customer = access.is_customer(member)
+            if not member.perms:
+                return jsonify({"error": "forbidden", "message": "Нет доступа к лаборатории — его выдаёт руководитель"}), 403
 
             g.api_member = member
             g.api_scopes = scopes

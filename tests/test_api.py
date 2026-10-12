@@ -11,13 +11,45 @@ import test_pages  # noqa: E402,F401
 from app import app
 
 
+import api  # noqa: E402
+
+# Токены «как от UNIT ID»: userinfo отдаёт sub и scope выданных прав
+FAKE_TOKENS = {"tok-h": {"sub": "h", "scope": "openid profile lab:read lab:write"},
+               "tok-read": {"sub": "h", "scope": "openid lab:read"},
+               "tok-openid": {"sub": "h", "scope": "openid profile"},
+               "tok-nobody": {"sub": "stranger-1", "scope": "openid lab:read lab:write"}}
+
+
 class ApiTest(unittest.TestCase):
     def setUp(self):
+        self._verify = api._verify_token
+        api._verify_token = lambda token: FAKE_TOKENS.get(token)
         self.client = app.test_client()
-        self.headers = {
-            "Authorization": "Bearer test-token-h",
-            "Content-Type": "application/json",
-        }
+        self.headers = {"Authorization": "Bearer tok-h", "Content-Type": "application/json"}
+
+    def tearDown(self):
+        api._verify_token = self._verify
+
+    def test_scopes_and_bypass_closed(self):
+        api._verify_token = self._verify               # настоящая проверка: UNIT ID «не отвечает»
+        import urllib.request
+        real_open = urllib.request.urlopen
+        def no_network(*a, **k):
+            raise OSError("нет сети")
+        urllib.request.urlopen = no_network
+        try:
+            r = self.client.get("/api/v1/me", headers={"Authorization": "Bearer test-token-h"})
+            self.assertEqual(r.status_code, 401)        # «тестовый» токен больше никого не пускает
+        finally:
+            urllib.request.urlopen = real_open
+            api._verify_token = lambda token: FAKE_TOKENS.get(token)
+        read = {"Authorization": "Bearer tok-read", "Content-Type": "application/json"}
+        self.assertEqual(self.client.get("/api/v1/projects", headers=read).status_code, 200)
+        self.assertEqual(self.client.post("/api/v1/projects", headers=read, json={"title": "Нельзя"}).status_code, 403)
+        only_openid = {"Authorization": "Bearer tok-openid"}
+        self.assertEqual(self.client.get("/api/v1/projects", headers=only_openid).status_code, 403)
+        stranger = {"Authorization": "Bearer tok-nobody"}
+        self.assertEqual(self.client.get("/api/v1/me", headers=stranger).status_code, 401)   # не из лаборатории
 
     def test_unauthorized(self):
         res = self.client.get("/api/v1/me")
