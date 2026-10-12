@@ -1,15 +1,17 @@
 {% extends 'base.html' %}
 {% from '_icons.html' import icon %}
 {% block title %}Мастерская — Лаборатория UNIT{% endblock %}
+{% block apptitle %}Мастерская{% endblock %}
 
-{% block body %}
+{# Мастерская (static/desk.js): свободные окна инструментов и док снизу. Открывается внутри
+   портала; «Во весь экран» разворачивает стол поверх всего, раскладка окон хранится на сервере. #}
+{% block content %}
 <div class="wd" data-wd>
   <header class="wd-bar">
-    <a class="wd-icon-btn" href="/home" title="К порталу" aria-label="К порталу">{{ icon('back', 17) }}</a>
     <div class="wd-head">
       <div style="display: flex; align-items: center; gap: 8px">
         <span class="wd-logo-ic">{{ icon('desk', 16) }}</span>
-        <input class="wd-title" data-wd-title value="Мастерская" maxlength="120" aria-label="Название мастерской">
+        <input class="wd-title" data-wd-title value="{{ layout.title or 'Мастерская' }}" maxlength="120" aria-label="Название мастерской">
       </div>
       <div class="wd-meta">
         <select class="wd-project-sel" data-wd-project aria-label="Фильтр по проекту">
@@ -18,27 +20,30 @@
           <option value="{{ p.id }}">{{ p.title }}</option>
           {% endfor %}
         </select>
-        <span class="wd-tag">Хранилище: {{ (used / 1048576)|round(1) }} / {{ (quota / 1048576)|int }} МБ</span>
+        <span class="wd-tag">Файлы: {{ (used / 1048576)|round(1) }} из {{ (quota / 1048576)|int }} МБ</span>
       </div>
     </div>
     <span class="wd-save" data-wd-save>Сохранено</span>
     <button class="wd-btn" type="button" data-wd-tile title="Расположить окна плиткой">{{ icon('grid', 14) }}<span class="hide-sm">Плитка</span></button>
     <button class="wd-btn" type="button" data-wd-cascade title="Расположить окна каскадом">{{ icon('layers', 14) }}<span class="hide-sm">Каскад</span></button>
     <button class="wd-btn" type="button" data-wd-min-all title="Свернуть все окна">{{ icon('down', 14) }}<span class="hide-sm">Свернуть</span></button>
-    <button class="wd-btn" type="button" data-wd-clean title="Очистить стол">{{ icon('x', 14) }}<span class="hide-sm">Очистить</span></button>
-    <button class="wd-btn is-accent" type="button" data-wd-fs title="Во весь экран">{{ icon('expand', 14) }}<span>Во весь экран</span></button>
+    <button class="wd-btn" type="button" data-wd-clean title="Закрыть все окна">{{ icon('x', 14) }}<span class="hide-sm">Очистить</span></button>
+    <button class="wd-btn is-accent" type="button" data-wd-fs title="Развернуть мастерскую во весь экран" aria-pressed="false">
+      <span data-wd-fs-ic>{{ icon('expand', 14) }}</span><span data-wd-fs-label>Во весь экран</span></button>
   </header>
 
   <main class="wd-desk" data-wd-desk>
     <div class="wd-hint" data-wd-hint>
-      <span class="ai-mark" style="width: 52px; height: 52px; border-radius: 16px; margin: 0 auto; color: var(--cyan); background: rgba(34, 227, 255, .1)">{{ icon('desk', 26) }}</span>
+      <span class="ai-mark" style="width: 52px; height: 52px; border-radius: 16px; margin: 0 auto">{{ icon('desk', 26) }}</span>
       <b>Мастерская готова к работе</b>
-      <span>Нажми на инструмент в панели снизу или открой каталог всех инструментов</span>
+      <span>Выберите инструмент в панели снизу или откройте каталог всех инструментов</span>
     </div>
     <div class="wd-snap" data-wd-snap hidden></div>
   </main>
 
-  <nav class="wd-dock" data-wd-dock aria-label="Инструменты мастерской"></nav>
+  <nav class="wd-dock" aria-label="Инструменты мастерской">
+    <div class="wd-dock-row" data-wd-dock-row></div>
+  </nav>
   <div class="wd-launch" data-wd-launch hidden></div>
   <input type="file" id="desk-file-input" hidden multiple>
 </div>
@@ -51,12 +56,11 @@
   'tasks': tasks|map(attribute='id')|list,
   'langs': langs,
   'colors': colors,
-  'ai_on': ai_on
+  'ai_on': ai_on,
+  'layout': layout
 } | tojson }}</script>
 {% endblock %}
 
-{% block footer %}{% endblock %}
-
 {% block scripts %}
-<script src="/static/desk.js" defer></script>
+<script src="{{ asset('/static/desk.js') }}" defer></script>
 {% endblock %}

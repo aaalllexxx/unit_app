@@ -4,7 +4,7 @@
     var U = window.UNIT, LAB = window.LAB;
     var $ = function (sel, root) { return (root || document).querySelector(sel); };
     var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
-    var root = $('[data-desk]');
+    var root = $('[data-wd]');
     if (!root || !LAB) return;
 
     var rawData = JSON.parse($('#desk-data').textContent || '{}');
@@ -15,12 +15,15 @@
     var langs = rawData.langs || ['python', 'javascript', 'typescript', 'html', 'css', 'sql', 'bash', 'json', 'markdown'];
     var colors = rawData.colors || ['', 'blue', 'teal', 'amber', 'rose', 'violet'];
 
-    var canvas = $('[data-desk-canvas]', root);
-    var hint = $('[data-desk-hint]', root);
-    var snapGhost = $('[data-desk-snap]', root);
-    var dockRow = $('[data-desk-dock-row]', root);
-    var saveEl = $('[data-desk-save]', root);
-    var projectFilterEl = $('[data-desk-project]', root);
+    var canvas = $('[data-wd-desk]', root);
+    var hint = $('[data-wd-hint]', root);
+    var snapGhost = $('[data-wd-snap]', root);
+    var dockRow = $('[data-wd-dock-row]', root);
+    var saveEl = $('[data-wd-save]', root);
+    var projectFilterEl = $('[data-wd-project]', root);
+    var titleEl = $('[data-wd-title]', root);
+    var fsBtn = $('[data-wd-fs]', root);
+    var launchEl = $('[data-wd-launch]', root);
 
     var zTop = 20;
     var uid = 0;
@@ -45,6 +48,27 @@
         saveEl.classList.toggle('is-err', !!isErr);
     };
 
+    /* ── Раскладка окон: хранится на сервере, её же может поменять ИИ-агент ── */
+    var booting = true;
+    var lastLayout = '';
+    function snapshot() {
+        return {
+            title: titleEl ? titleEl.value.trim() : '',
+            wins: wins.map(function (w) {
+                return { tool: w.tool, item_id: w.item_id || null, x: w.x, y: w.y, w: w.w, h: w.h,
+                         min: !!w.min, max: !!w.max, z: w.z || 0 };
+            })
+        };
+    }
+    var saveLayout = debounce(function () {
+        var data = snapshot();
+        var sig = JSON.stringify(data);
+        if (sig === lastLayout) return;
+        lastLayout = sig;
+        LAB.api('/api/desk/layout', data).catch(function () { lastLayout = ''; });
+    }, 700);
+    function queueLayout() { if (!booting) saveLayout(); }
+
     /* ── Управление наработками ── */
     function updateItemInState(updated) {
         var found = false;
@@ -54,6 +78,7 @@
         });
         if (!found) items.unshift(updated);
         notifyTool('files');
+        queueLayout();
     }
 
     function removeItemFromState(id) {
@@ -79,6 +104,7 @@
         el.style.top = (win.y * 100) + '%';
         el.style.width = (win.w * 100) + '%';
         el.style.height = (win.h * 100) + '%';
+        queueLayout();
     }
 
     function clamp(win) {
@@ -108,6 +134,7 @@
         wins.forEach(function (w) { w.el.classList.toggle('is-focus', w === win); });
         win.el.style.zIndex = String(++zTop);
         win.z = zTop;
+        queueLayout();
         lastWins[win.tool] = win;
         focusedWin = win;
         renderDock();
@@ -122,7 +149,7 @@
     }
 
     function dragWindow(win) {
-        var bar = $('.desk-win-bar', win.el);
+        var bar = $('.wd-win-bar', win.el);
         bar.addEventListener('pointerdown', function (e) {
             if (e.button !== 0 || e.target.closest('button, input, select, textarea, a') || isPhone()) return;
             var r = canvas.getBoundingClientRect();
@@ -224,18 +251,18 @@
     function makeWindow(def, opts) {
         opts = opts || {};
         var winId = ++uid;
-        var el = h('<section class="desk-win" data-win-id="' + winId + '" role="dialog" aria-label="' + esc(opts.title || def.title) + '">'
-            + '<header class="desk-win-bar">'
-            + '<span class="desk-win-ic">' + icon(def.icon, 15) + '</span>'
-            + '<span class="desk-win-title">' + esc(opts.title || def.title) + '</span>'
-            + '<span class="desk-win-extra"></span>'
-            + '<button type="button" class="desk-win-btn" data-win-min title="Свернуть" aria-label="Свернуть"><i class="desk-g-min"></i></button>'
-            + '<button type="button" class="desk-win-btn" data-win-max title="Развернуть" aria-label="Развернуть"><i class="desk-g-max"></i></button>'
-            + '<button type="button" class="desk-win-btn is-close" data-win-close title="Закрыть" aria-label="Закрыть">' + icon('x', 14) + '</button>'
+        var el = h('<section class="wd-win" data-win-id="' + winId + '" role="dialog" aria-label="' + esc(opts.title || def.title) + '">'
+            + '<header class="wd-win-bar">'
+            + '<span class="wd-win-ic">' + icon(def.icon, 15) + '</span>'
+            + '<span class="wd-win-title">' + esc(opts.title || def.title) + '</span>'
+            + '<span class="wd-win-extra"></span>'
+            + '<button type="button" class="wd-win-btn" data-win-min title="Свернуть" aria-label="Свернуть"><i class="wd-g-min"></i></button>'
+            + '<button type="button" class="wd-win-btn" data-win-max title="Развернуть" aria-label="Развернуть"><i class="wd-g-max"></i></button>'
+            + '<button type="button" class="wd-win-btn is-close" data-win-close title="Закрыть" aria-label="Закрыть">' + icon('x', 14) + '</button>'
             + '</header>'
-            + '<div class="desk-win-body"></div>'
-            + '<i class="desk-rs" data-rs="r"></i><i class="desk-rs" data-rs="b"></i><i class="desk-rs" data-rs="l"></i>'
-            + '<i class="desk-rs" data-rs="rb"></i><i class="desk-rs" data-rs="lb"></i>'
+            + '<div class="wd-win-body"></div>'
+            + '<i class="wd-rs" data-rs="r"></i><i class="wd-rs" data-rs="b"></i><i class="wd-rs" data-rs="l"></i>'
+            + '<i class="wd-rs" data-rs="rb"></i><i class="wd-rs" data-rs="lb"></i>'
             + '</section>');
 
         var win = Object.assign({
@@ -243,7 +270,7 @@
             tool: def.id,
             def: def,
             el: el,
-            body: $('.desk-win-body', el),
+            body: $('.wd-win-body', el),
             inst: null,
             min: false,
             max: false,
@@ -253,12 +280,12 @@
         if (opts.box) Object.assign(win, opts.box);
 
         win.setTitle = function (text) {
-            $('.desk-win-title', el).textContent = text;
+            $('.wd-win-title', el).textContent = text;
             win.title = text;
             renderDock();
         };
         win.setExtra = function (html) {
-            var extra = $('.desk-win-extra', el);
+            var extra = $('.wd-win-extra', el);
             extra.innerHTML = html;
             return extra;
         };
@@ -268,6 +295,7 @@
             el.hidden = true;
             updateHint();
             renderDock();
+            queueLayout();
         };
         win.restore = function () {
             if (win.min) {
@@ -275,12 +303,14 @@
                 el.hidden = false;
                 updateHint();
                 if (win.inst && win.inst.resize) win.inst.resize();
+                queueLayout();
             }
         };
         win.toggleMax = function () {
             win.max = !win.max;
             el.classList.toggle('is-max', win.max);
             if (win.inst && win.inst.resize) win.inst.resize();
+            queueLayout();
         };
         win.close = function () {
             try { if (win.inst && win.inst.close) win.inst.close(); } catch (err) { console.error(err); }
@@ -291,6 +321,7 @@
             var next = wins.filter(function (w) { return !w.min; }).sort(function (a, b) { return b.z - a.z; })[0];
             if (next) focusWin(next); else renderDock();
             updateHint();
+            queueLayout();
         };
 
         clamp(win);
@@ -302,7 +333,7 @@
         $('[data-win-min]', el).addEventListener('click', function () { win.minimize(); });
         $('[data-win-max]', el).addEventListener('click', function () { win.toggleMax(); });
         $('[data-win-close]', el).addEventListener('click', function () { win.close(); });
-        $('.desk-win-bar', el).addEventListener('dblclick', function (e) {
+        $('.wd-win-bar', el).addEventListener('dblclick', function (e) {
             if (!e.target.closest('button, input, select')) win.toggleMax();
         });
 
@@ -355,21 +386,61 @@
 
     /* ═══ Док ═══════════════════════════════════════════════════════════════ */
     function renderDock() {
-        var html = '';
+        var html = '<div class="wd-dock-group">';
         tools.forEach(function (def) {
             var openWin = wins.find(function (w) { return w.tool === def.id && !w.min; });
             var hasAny = wins.some(function (w) { return w.tool === def.id; });
             var isFocus = focusedWin && focusedWin.tool === def.id && !focusedWin.min;
-            var cls = 'desk-dock-btn' + (hasAny ? ' is-open' : '') + (isFocus ? ' is-focus' : '');
+            var cls = 'wd-dock-btn' + (hasAny ? ' is-open' : '') + (isFocus ? ' is-focus' : '');
             html += '<button type="button" class="' + cls + '" data-dock-tool="' + def.id + '" title="' + esc(def.title) + '">'
                 + icon(def.icon, 20)
-                + '<span class="desk-dock-mark"></span>'
+                + '<span class="wd-dock-mark"></span>'
                 + '</button>';
         });
+        html += '</div><span class="wd-dock-sep"></span>'
+            + '<button type="button" class="wd-dock-btn is-all' + (launchEl && !launchEl.hidden ? ' is-focus' : '') + '" data-dock-all title="Все инструменты" aria-label="Все инструменты">'
+            + icon('grid', 20) + '<span class="wd-dock-mark"></span></button>';
         dockRow.innerHTML = html;
     }
 
+    /* ── Каталог: все инструменты с пояснениями ── */
+    var ABOUT = {
+        files: 'Все наработки стола: поиск, фильтр по типу и проекту, файлы',
+        note: 'Текст в Markdown с предпросмотром — сохраняется сам',
+        code: 'Сниппет кода с подсветкой языка',
+        table: 'Таблица данных: строки и столбцы, вставка из Excel',
+        draw: 'Доска для схем и набросков от руки',
+        checklist: 'Список дел с отметками — можно привязать к проекту',
+        github: 'Репозитории привязанного GitHub: файлы и README',
+        links: 'Ссылки под рукой: документация, макеты, стенды',
+        timer: 'Помодоро и учёт времени по задаче',
+        ai: 'ИИ-агент видит стол и проекты и может навести порядок'
+    };
+    function openLaunch(on) {
+        if (!launchEl) return;
+        if (on) {
+            var cards = '';
+            tools.forEach(function (def) {
+                cards += '<button type="button" class="wd-launch-item" data-launch-tool="' + def.id + '">'
+                    + '<span class="wd-launch-ic">' + icon(def.icon, 18) + '</span>'
+                    + '<span class="wd-launch-text"><b>' + esc(def.title) + '</b><small>' + esc(ABOUT[def.id] || '') + '</small></span></button>';
+            });
+            launchEl.innerHTML = '<div class="wd-launch-card" role="dialog" aria-label="Инструменты мастерской">'
+                + '<div class="wd-launch-head"><b>Инструменты</b><span>Нажмите, чтобы открыть окно на столе</span>'
+                + '<button type="button" class="wd-icon-btn" data-launch-close aria-label="Закрыть">' + icon('x', 15) + '</button></div>'
+                + '<div class="wd-launch-body"><div class="wd-launch-group"><div class="wd-launch-grid">' + cards + '</div></div></div></div>';
+        }
+        launchEl.hidden = !on;
+        renderDock();
+    }
+    if (launchEl) launchEl.addEventListener('click', function (e) {
+        var item = e.target.closest('[data-launch-tool]');
+        if (item) { openLaunch(false); openTool(item.getAttribute('data-launch-tool')); return; }
+        if (e.target === launchEl || e.target.closest('[data-launch-close]')) openLaunch(false);
+    });
+
     dockRow.addEventListener('click', function (e) {
+        if (e.target.closest('[data-dock-all]')) { openLaunch(launchEl.hidden); return; }
         var btn = e.target.closest('[data-dock-tool]');
         if (!btn) return;
         var toolId = btn.getAttribute('data-dock-tool');
@@ -796,13 +867,13 @@
                 + '<button class="wt-btn is-on" type="button" data-d-tool="pen">' + icon('pen', 13) + 'Кисть</button>'
                 + '<button class="wt-btn" type="button" data-d-tool="line">' + icon('arrow', 13) + 'Линия</button>'
                 + '<button class="wt-btn" type="button" data-d-tool="eraser">' + icon('x', 13) + 'Ластик</button>'
-                + '<div class="desk-bar-sep"></div>'
+                + '<div class="wd-sep"></div>'
                 + '<button class="wt-swatch is-on" type="button" style="background: #1e293b" data-color="#1e293b"></button>'
                 + '<button class="wt-swatch" type="button" style="background: #3b82f6" data-color="#3b82f6"></button>'
                 + '<button class="wt-swatch" type="button" style="background: #ef4444" data-color="#ef4444"></button>'
                 + '<button class="wt-swatch" type="button" style="background: #10b981" data-color="#10b981"></button>'
                 + '<button class="wt-swatch" type="button" style="background: #f59e0b" data-color="#f59e0b"></button>'
-                + '<div class="desk-bar-sep"></div>'
+                + '<div class="wd-sep"></div>'
                 + '<button class="wt-btn" type="button" data-d-clear>' + icon('trash', 13) + 'Очистить</button>'
                 + '<button class="wt-btn is-primary" type="button" data-d-export>' + icon('upload', 13) + 'Скачать PNG</button>'
                 + '</div>'
@@ -1315,7 +1386,7 @@
                 fetch('/api/ai/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: q, thread: 'desk' })
+                    body: JSON.stringify({ text: q, thread: 'me' })
                 }).then(function (r) {
                     if (!r.ok) throw new Error('Ошибка связи');
                     var reader = r.body.getReader();
@@ -1361,7 +1432,7 @@
     });
 
     /* ═══ Верхняя панель: Быстрые действия ═══════════════════════════════════ */
-    $('[data-desk-tile]').addEventListener('click', function () {
+    $('[data-wd-tile]').addEventListener('click', function () {
         var open = wins.filter(function (w) { return !w.min; });
         if (!open.length) return;
         var cols = open.length <= 2 ? open.length : 2;
@@ -1380,7 +1451,7 @@
         });
     });
 
-    $('[data-desk-cascade]').addEventListener('click', function () {
+    $('[data-wd-cascade]').addEventListener('click', function () {
         wins.filter(function (w) { return !w.min; }).forEach(function (w, i) {
             w.max = false;
             w.el.classList.remove('is-max');
@@ -1393,11 +1464,11 @@
         });
     });
 
-    $('[data-desk-min-all]').addEventListener('click', function () {
+    $('[data-wd-min-all]').addEventListener('click', function () {
         wins.forEach(function (w) { w.minimize(); });
     });
 
-    $('[data-desk-clean]').addEventListener('click', function () {
+    $('[data-wd-clean]').addEventListener('click', function () {
         if (!wins.length) return;
         if (window.confirm('Закрыть все открытые окна на столе?')) {
             var copy = wins.slice();
@@ -1459,8 +1530,71 @@
         });
     });
 
-    // Первоначальное открытие: открываем окно «Материалы» для быстрого доступа
+    /* ── Во весь экран: стол поверх портала (и браузера, если он позволяет) ── */
+    function setFull(on) {
+        root.classList.toggle('is-full', on);
+        fsBtn.setAttribute('aria-pressed', String(on));
+        fsBtn.title = on ? 'Вернуть мастерскую в портал' : 'Развернуть мастерскую во весь экран';
+        $('[data-wd-fs-ic]', fsBtn).innerHTML = icon(on ? 'shrink' : 'expand', 14);
+        $('[data-wd-fs-label]', fsBtn).textContent = on ? 'Обычный вид' : 'Во весь экран';
+        wins.forEach(function (w) { if (w.inst && w.inst.resize) w.inst.resize(); });
+    }
+    fsBtn.addEventListener('click', function () {
+        var on = !root.classList.contains('is-full');
+        setFull(on);
+        try {
+            if (on && document.documentElement.requestFullscreen && !document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(function () {});
+            } else if (!on && document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(function () {});
+            }
+        } catch (err) { /* полноэкранный режим браузера недоступен — хватает развёрнутого стола */ }
+    });
+    document.addEventListener('fullscreenchange', function () {
+        if (!document.fullscreenElement && root.classList.contains('is-full')) setFull(false);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (launchEl && !launchEl.hidden) { openLaunch(false); return; }
+        if (root.classList.contains('is-full') && !document.fullscreenElement) setFull(false);
+    });
+    if (titleEl) titleEl.addEventListener('input', queueLayout);
+
+    /* ── Раскладка: открыть окна, как они стояли (или как их расставил ИИ-агент) ── */
+    function applyLayout(layout) {
+        booting = true;
+        wins.slice().forEach(function (w) { w.close(); });
+        var list = ((layout && layout.wins) || []).slice().sort(function (a, b) { return (a.z || 0) - (b.z || 0); });
+        list.forEach(function (sv) {
+            var item = null;
+            if (sv.item_id) {
+                item = items.concat(sharedItems).find(function (it) { return it.id === sv.item_id; });
+                if (!item) return;                              // наработку удалили — окно не нужно
+            }
+            var win = openTool(sv.tool, { item: item, title: item ? item.title : undefined,
+                                          box: { x: sv.x, y: sv.y, w: sv.w, h: sv.h } });
+            if (!win) return;
+            if (sv.max && !win.max) win.toggleMax();
+            if (sv.min) win.minimize();
+        });
+        if (layout && layout.title && titleEl) titleEl.value = layout.title;
+        lastLayout = JSON.stringify(snapshot());
+        booting = false;
+        updateHint();
+        renderDock();
+    }
+    // Агент поменял стол (наработки или раскладку) — перечитываем без перезагрузки страницы
+    window.addEventListener('lab:desk-changed', function () {
+        LAB.api('/api/desk/state').then(function (st) {
+            items = st.items || items;
+            notifyTool('files');
+            applyLayout(st.layout || {});
+        }).catch(fail);
+    });
+
     renderDock();
     updateHint();
-    openTool('files');
+    var saved = rawData.layout || {};
+    if (saved.wins && saved.wins.length) applyLayout(saved);
+    else { openTool('files'); booting = false; lastLayout = JSON.stringify(snapshot()); }
 })();

@@ -32,6 +32,10 @@ LANGS = [
     "powershell", "dockerfile", "ini", "text"
 ]
 COLORS = ["", "blue", "teal", "amber", "rose", "violet"]
+# Инструменты мастерской (static/desk.js) — окна, которые можно открыть и сохранить в раскладке
+TOOLS = {"files": "Материалы", "note": "Заметка", "code": "Код", "table": "Таблица", "draw": "Доска",
+         "checklist": "Чек-лист", "github": "GitHub", "links": "Ссылки", "timer": "Таймер", "ai": "ИИ-агент"}
+MAX_WINDOWS = 24
 app.config.setdefault("MAX_CONTENT_LENGTH", MAX_FILE + 1024 * 1024)
 
 
@@ -92,7 +96,63 @@ def desk():
                                                   M.Checkin.day == datetime.now().date()))
     return render_template("desk.html", items=[_item_json(i, names) for i in items], projects=projects, names=names,
                            shared=[dict(_item_json(i, names), author=authors.get(i.member_id, "")) for i in shared], kinds=M.DESK_KINDS,
-                           langs=LANGS, colors=COLORS, tasks=tasks, used=used, quota=QUOTA, checkin=checkin)
+                           langs=LANGS, colors=COLORS, tasks=tasks, used=used, quota=QUOTA, checkin=checkin,
+                           layout=layout_of(g.me.id))
+
+
+# ─── Раскладка окон ─────────────────────────────────────────────────────────
+def _num(value, low: float, high: float, default: float) -> float:
+    try:
+        return round(max(low, min(high, float(value))), 4)
+    except (TypeError, ValueError):
+        return default
+
+
+def clean_layout(raw) -> dict:
+    """Раскладка из браузера или от ИИ-агента: только знакомые инструменты, доли стола 0…1."""
+    raw = raw if isinstance(raw, dict) else {}
+    wins = []
+    for w in (raw.get("wins") or [])[:MAX_WINDOWS]:
+        if not isinstance(w, dict) or w.get("tool") not in TOOLS:
+            continue
+        item = w.get("item_id")
+        wins.append({"tool": w["tool"], "item_id": int(item) if str(item or "").isdigit() else None,
+                     "x": _num(w.get("x"), -0.5, 0.95, 0.05), "y": _num(w.get("y"), 0, 0.95, 0.05),
+                     "w": _num(w.get("w"), 0.12, 1, 0.45), "h": _num(w.get("h"), 0.15, 1, 0.6),
+                     "min": bool(w.get("min")), "max": bool(w.get("max")), "z": int(_num(w.get("z"), 0, 10 ** 6, 0))})
+    return {"wins": wins, "title": str(raw.get("title") or "").strip()[:120]}
+
+
+def layout_of(member_id: str) -> dict:
+    member = db().get(M.Member, member_id)
+    return clean_layout((member.prefs or {}).get("desk_layout") if member else {})
+
+
+def save_layout(member_id: str, layout: dict) -> dict:
+    member = db().get(M.Member, member_id)
+    prefs = dict(member.prefs or {})
+    prefs["desk_layout"] = clean_layout(layout)
+    prefs["desk_layout_v"] = int(prefs.get("desk_layout_v") or 0) + 1
+    member.prefs = prefs
+    db().commit()
+    return prefs["desk_layout"]
+
+
+@app.post("/api/desk/layout")
+@need("workshop.use")
+def desk_layout_save():
+    """Окна стола сохраняются сами: где стоят, какого размера, что свёрнуто."""
+    return {"ok": True, "layout": save_layout(g.me.id, request.get_json(silent=True) or {})}
+
+
+@app.get("/api/desk/state")
+@need("workshop.use")
+def desk_state():
+    """Наработки и раскладка — стол перечитывает их, когда что-то поменял ИИ-агент."""
+    names = {p.id: p.title for p in visible_projects(g.me)}
+    items = db().scalars(select(M.DeskItem).where(M.DeskItem.member_id == g.me.id)
+                         .order_by(M.DeskItem.pinned.desc(), M.DeskItem.updated_at.desc())).all()
+    return {"items": [_item_json(i, names) for i in items], "layout": layout_of(g.me.id)}
 
 
 @app.post("/api/desk")

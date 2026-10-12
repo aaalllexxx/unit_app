@@ -107,6 +107,20 @@ class DeskTest(unittest.TestCase):
         self.assertEqual(copy.status_code, 201)
         self.assertEqual(c.post(f"/api/desk/{up['id']}/delete", headers=H).get_json(), {"ok": True})
 
+    def test_layout_is_saved_and_cleaned(self):
+        c = T.client("m1")
+        page = c.get("/desk").get_data(as_text=True)
+        for hook in ("data-wd-desk", "data-wd-dock-row", "data-wd-fs", "data-wd-launch"):
+            self.assertIn(hook, page)                                   # разметка, которую ждёт desk.js
+        saved = c.post("/api/desk/layout", json={"title": "Мой стол", "wins": [
+            {"tool": "note", "item_id": 5, "x": 0.1, "y": 0.2, "w": 0.4, "h": 0.5, "max": True},
+            {"tool": "<script>", "x": 0}, {"tool": "files", "x": 9, "w": -1}]}, headers=H).get_json()["layout"]
+        self.assertEqual([w["tool"] for w in saved["wins"]], ["note", "files"])     # чужие инструменты — прочь
+        self.assertEqual((saved["wins"][1]["x"], saved["wins"][1]["w"]), (0.95, 0.12))   # доли стола зажаты
+        state = c.get("/api/desk/state").get_json()
+        self.assertEqual(state["layout"]["title"], "Мой стол")
+        self.assertIn('value="Мой стол"', c.get("/desk").get_data(as_text=True))
+
 
 class TasksTest(unittest.TestCase):
     def test_board_api(self):
