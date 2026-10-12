@@ -32,8 +32,8 @@ RETRIES = 2
 
 # Типичное обращение агента: правила, данные, история и ответ — по ним «≈ цена запроса»
 EST_IN, EST_OUT = 9000, 1200
-# Дешёвая модель — обращение не дороже этого; такие лимитом не ограничены
-CHEAP_USD = 0.004
+# Дешёвая модель — минимум втрое дешевле основной; такие лимитом не ограничены
+CHEAP_SHARE = 1 / 3
 NOT_CHAT = ("embed", "whisper", "tts", "audio", "dall", "flux", "veo", "sora", "moderation", "image", "banana",
             "imagine", "guard", "rerank", "midjourney", "recraft", "ideogram", "seedream", "kandinsky", "video")
 FAST_WORDS = ("flash", "mini", "haiku", "lite", "nano", "fast", "turbo", "small", "instant", "8b", "7b")
@@ -192,9 +192,14 @@ def cost_of(s, model: str, usage: dict, sent_chars: int = 0, got_chars: int = 0)
 
 
 def is_cheap(s, model: str) -> bool:
-    est = estimate(s, model)
-    if est is not None:
-        return est <= CHEAP_USD
+    """Дешёвая — заметно дешевле основной модели агента (сама основная дешёвой не бывает).
+    Цены неизвестны — судим по названию: flash, mini, haiku…"""
+    main = main_model(s)
+    if not model or model == main:
+        return False
+    est, top = estimate(s, model), estimate(s, main)
+    if est is not None and top:
+        return est <= top * CHEAP_SHARE
     return any(w in model.lower() for w in FAST_WORDS)
 
 
