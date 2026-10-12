@@ -1235,8 +1235,11 @@ def git_link():
     username = str(data.get("username") or "").strip()
     token = str(data.get("token") or "").strip()
     if not username:
-        return {"error": "Укажите имя пользователя GitHub"}, 400
-    git_hub.link_account(db(), g.me.id, username, token)
+        return {"error": "Укажите логин GitHub"}, 400
+    try:
+        git_hub.link_account(db(), g.me.id, username, token)
+    except ValueError as err:
+        return {"error": str(err)}, 400
     member = db().get(M.Member, g.me.id)
     return {"ok": True, "info": git_hub.get_git_info(member or g.me)}
 
@@ -1259,8 +1262,8 @@ def git_repos():
     if not info["linked"]:
         return {"error": "GitHub аккаунт не привязан"}, 400
     token = ((member or g.me).contacts or {}).get("github_token", "")
-    repos = git_hub.list_repos(info["username"], token)
-    return {"repos": repos, "username": info["username"]}
+    repos, err = git_hub.list_repos(info["username"], token)
+    return {"repos": repos, "username": info["username"], "error": err}
 
 
 @app.post("/api/git/import")
@@ -1274,8 +1277,8 @@ def git_import():
         return {"error": "Укажите репозиторий для импорта"}, 400
     token = (g.me.contacts or {}).get("github_token", "")
     details = git_hub.fetch_repo_details(repo, token)
-    if not details:
-        return {"error": "Не удалось загрузить данные репозитория"}, 404
+    if not details or not details.get("name"):
+        return {"error": "Не удалось загрузить данные репозитория. Проверьте имя или доступ к нему."}, 404
     pid = desk._project_ok(data.get("project_id"))
     items = git_hub.import_repo_to_desk(db(), g.me.id, details, pid)
     names = {p.id: p.title for p in visible_projects(g.me)}
@@ -1366,7 +1369,7 @@ def common():
     here = SITE.rstrip("/")
     return {"me": me_, "can": lambda key: access.can(me_, key), "statuses": M.STATUSES, "today": date.today(),
             "services": [x for x in unitid.services() if x.get("url", "").rstrip("/") != here] if me_ else [],
-            "support_url": f"{ISSUER}/support?service={CLIENT_ID}",
+            "support_url": "/support",
             "view_titles": {v: access.view_title(db(), v) for v in (me_.views if me_ else [])},
             "issuer": ISSUER, "unread": unread, "now_hour": datetime.now().hour,
             "ai_on": access.can(me_, "ai.use") and ai.configured(db()),
@@ -1374,11 +1377,12 @@ def common():
             "haptics": (me_.prefs or {}).get("haptics", True) if me_ else True}
 
 
-# Модули портала: мастерская, ИИ-агент, контроль выполнения, доступы, связь с UNIT ID
+# Модули портала: мастерская, ИИ-агент, контроль выполнения, доступы, техподдержка, связь с UNIT ID
 import assist  # noqa: E402,F401
 import control  # noqa: E402,F401
 import desk  # noqa: E402,F401
 import rights  # noqa: E402,F401
+import support  # noqa: E402,F401
 import unitid  # noqa: E402
 
 unitid.start()

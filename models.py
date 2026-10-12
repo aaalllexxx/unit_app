@@ -261,6 +261,16 @@ class Timer(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
+class AiChat(Base):
+    """Разговор с ИИ агентом. id: «me» (личный), «c_<uid>» (пользовательский), «p<id>» (о проекте)."""
+    __tablename__ = "ai_chats"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="Новый чат")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
 class AiMessage(Base):
     """Разговор с ИИ. thread: «me» — личный, «p<id>» — о проекте."""
     __tablename__ = "ai_messages"
@@ -328,6 +338,53 @@ class AiSpend(Base):
     requests: Mapped[int] = mapped_column(Integer, default=0)
     tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+SUPPORT_CATEGORIES = {
+    "tech": "Техническая проблема",
+    "access": "Доступ и аккаунт",
+    "ai": "ИИ агент и инструменты",
+    "feature": "Предложение / идея",
+    "other": "Другой вопрос",
+}
+
+SUPPORT_STATUSES = {
+    "open": "Новое",
+    "in_progress": "В работе",
+    "resolved": "Решено",
+    "closed": "Закрыто",
+}
+
+SUPPORT_PRIORITIES = {
+    "normal": "Обычный",
+    "high": "Высокий",
+    "urgent": "Срочный",
+}
+
+
+class SupportTicket(Base):
+    """Обращение в техподдержку лаборатории."""
+    __tablename__ = "support_tickets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    subject: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(40), default="tech")
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+
+
+class SupportMessage(Base):
+    """Сообщение в ветке обращения техподдержки."""
+    __tablename__ = "support_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), index=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    body: Mapped[str] = mapped_column(Text)
+    is_staff: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
 
 
 def _migrate() -> None:

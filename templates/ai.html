@@ -11,27 +11,45 @@
 </div></div>
 {% else %}
 <div class="chat-page">
-  <div class="panel threads-box">
-    <div class="panel-head"><h3>Разговоры</h3></div>
-    <nav class="panel-body threads">
-      <a href="/ai" class="{{ 'on' if thread == 'me' }}">{{ icon('user', 16) }}Личный</a>
-      {% for p in projects %}<a href="/ai?thread=p{{ p.id }}" class="{{ 'on' if thread == 'p' ~ p.id }}">{{ icon('folder', 16) }}<span class="truncate">{{ p.title }}</span></a>{% endfor %}
-    </nav>
+  <aside class="panel threads-box">
+    <div class="panel-head" style="padding: 10px 14px">
+      <button class="btn btn-primary btn-sm btn-block" type="button" data-chat-new>{{ icon('plus', 15) }}Новый чат</button>
+    </div>
+    <div class="panel-body threads" style="overflow-y: auto; max-height: calc(100vh - 280px); padding: 8px">
+      <div class="thread-section-label">Недавние</div>
+      <div class="thread-item {{ 'on' if thread == 'me' }}">
+        <a href="/ai?chat=me" class="truncate">{{ icon('user', 15) }}<span>Личный диалог</span></a>
+      </div>
+      {% for c in chats %}
+      <div class="thread-item {{ 'on' if thread == c.id }}">
+        <a href="/ai?chat={{ c.id }}" class="truncate">{{ icon('chat', 15) }}<span title="{{ c.title }}">{{ c.title }}</span></a>
+        <button class="icon-btn thread-del" type="button" data-chat-del="{{ c.id }}" title="Удалить чат" aria-label="Удалить чат">{{ icon('trash', 13) }}</button>
+      </div>
+      {% endfor %}
+      {% if projects %}
+      <div class="thread-section-label" style="margin-top: 10px">По проектам</div>
+      {% for p in projects %}
+      <div class="thread-item {{ 'on' if thread == 'p' ~ p.id }}">
+        <a href="/ai?chat=p{{ p.id }}" class="truncate">{{ icon('folder', 15) }}<span title="{{ p.title }}">{{ p.title }}</span></a>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
     <div class="panel-foot tiny faint">Осталось запросов сегодня: {{ left if left < 100000 else 'без ограничения' }}</div>
-  </div>
-  <div class="panel chat-box">
-    <div class="panel-head">
+  </aside>
+  <main class="panel chat-box">
+    <div class="panel-head" style="align-items: center; gap: 10px">
       <span class="ai-mark">{{ icon('spark', 15) }}</span>
-      <select class="select input-sm only-sm-flex" style="width: auto; max-width: 60%" onchange="location.href = this.value" aria-label="Разговор">
-        <option value="/ai" {{ 'selected' if thread == 'me' }}>Личный разговор</option>
-        {% for p in projects %}<option value="/ai?thread=p{{ p.id }}" {{ 'selected' if thread == 'p' ~ p.id }}>{{ p.title }}</option>{% endfor %}
-      </select>
-      <h3 class="hide-md">{{ 'Личный разговор' if thread == 'me' else 'О проекте' }}</h3>
-      <button class="btn btn-quiet btn-sm spacer" type="button" data-chat-clear>{{ icon('trash', 14) }}Очистить</button>
+      <h3 class="truncate grow" style="font-size: 15px; margin: 0">{{ current_title }}</h3>
+      {% if thread.startswith('c_') %}
+      <button class="btn btn-quiet btn-sm" type="button" data-chat-del="{{ thread }}">{{ icon('trash', 14) }}Удалить чат</button>
+      {% else %}
+      <button class="btn btn-quiet btn-sm" type="button" data-chat-clear>{{ icon('trash', 14) }}Очистить</button>
+      {% endif %}
     </div>
     {% set chat_thread = thread %}{% set chat_ask = ask %}
     {% include '_chat.html' %}
-  </div>
+  </main>
 </div>
 {% endif %}
 {% endblock %}

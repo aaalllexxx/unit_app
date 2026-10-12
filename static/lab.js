@@ -134,6 +134,7 @@
         this.item = box.getAttribute('data-item') || '';
         this.busy = false;
         this.loaded = false;
+        this.abortController = null;
         var self = this;
         this.form.addEventListener('submit', function (event) {
             event.preventDefault();
@@ -148,8 +149,19 @@
         box.addEventListener('click', function (event) {
             var chip = event.target.closest('[data-ask]');
             if (chip) { self.send(chip.getAttribute('data-ask')); return; }
+            var stopBtn = event.target.closest('[data-chat-stop]');
+            if (stopBtn) { self.stop(); return; }
             var apply = event.target.closest('[data-apply]');
             if (apply) self.apply(apply);
+            var copyBtn = event.target.closest('[data-msg-copy]');
+            if (copyBtn) {
+                var textToCopy = (copyBtn.closest('.bubble').querySelector('.md') || {}).innerText || '';
+                navigator.clipboard.writeText(textToCopy).then(function () {
+                    U.toast('Скопировано', 'ok');
+                    U.haptic('tap');
+                });
+                return;
+            }
             var clear = event.target.closest('[data-chat-clear]');
             if (clear && window.confirm('Очистить разговор?')) {
                 api('/api/ai/clear', { thread: self.thread }).then(function () {
@@ -159,6 +171,20 @@
             }
         });
     }
+    Chat.prototype.setControls = function (generating) {
+        var sendBtn = $('.ci-send', this.form);
+        var stopBtn = $('.ci-stop', this.form) || $('[data-chat-stop]', this.form);
+        if (sendBtn) sendBtn.hidden = generating;
+        if (stopBtn) stopBtn.hidden = !generating;
+    };
+    Chat.prototype.stop = function () {
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        this.busy = false;
+        this.setControls(false);
+    };
     Chat.prototype.load = function () {
         var self = this;
         if (this.loaded) return Promise.resolve();
@@ -189,8 +215,12 @@
             var many = (m.actions || []).filter(function (a) { return !a.applied; }).length > 1;
             el.innerHTML = '<span class="ai-mark" style="width: 26px; height: 26px; border-radius: 8px">' + icon('spark', 14) + '</span>'
                 + '<div class="bubble"><div class="md">' + md(m.text) + '</div>'
-                + (acts ? '<div class="ai-acts">' + acts + (many ? '<button class="btn btn-ghost btn-sm" type="button" data-apply="all" data-msg="' + m.id + '">Применить всё</button>' : '') + '</div>' : '')
-                + (m.at ? '<div class="when">' + esc(m.at) + '</div>' : '') + '</div>';
+                + (acts ? '<div class="ai-acts"><div class="ai-acts-head"><span>' + icon('spark', 13) + 'Инструменты агента</span>'
+                    + (many ? '<button class="btn btn-ghost btn-xs" type="button" data-apply="all" data-msg="' + m.id + '">Применить всё</button>' : '') + '</div>' + acts + '</div>' : '')
+                + '<div class="msg-meta-row">'
+                + (m.at ? '<span class="when">' + esc(m.at) + '</span>' : '')
+                + '<button class="btn btn-quiet btn-xs msg-copy-btn" type="button" data-msg-copy title="Скопировать ответ">' + icon('copy', 13) + '<span>Скопировать</span></button>'
+                + '</div></div>';
         }
         if (!holder) this.log.appendChild(el);
         return el;
@@ -198,8 +228,14 @@
     Chat.prototype.send = function (text) {
         var self = this;
         text = (text || '').trim();
-        if (!text || this.busy) return;
+        if (!text) return;
+        if (this.busy) {
+            // Перебить агента: останавливаем предыдущий запрос и сразу шлём новый
+            this.stop();
+        }
         this.busy = true;
+        this.setControls(true);
+        this.abortController = new AbortController();
         this.area.value = '';
         if (U.autosize) U.autosize(this.area);
         this.render({ role: 'user', text: text });
@@ -211,9 +247,23 @@
         var acc = '';
         fetch('/api/ai/chat', { method: 'POST', credentials: 'same-origin',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ text: text, thread: this.thread, item_id: this.item }) })
+                                body: JSON.stringify({ text: text, thread: this.thread, item_id: this.item }),
+                                signal: this.abortController.signal })
             .then(function (r) {
-                if (!r.ok) return r.json().then(function (b) { throw new Error(b.error || 'ИИ недоступен'); });
+                if (!r.ok) {
+                    return r.text().then(function (raw) {
+                        var msg = 'ИИ временно недоступен (' + r.status + ')';
+                        try {
+                            var b = JSON.parse(raw);
+                            if (b && b.error) msg = b.error;
+                        } catch (e) {
+                            if (r.status === 502 || r.status === 504) msg = 'Шлюз модели не отвечает — попробуйте через минуту';
+                            else if (r.status === 403) msg = 'Доступ к ИИ ограничен';
+                            else if (r.status === 429) msg = 'Лимит запросов к ИИ на сегодня исчерпан';
+                        }
+                        throw new Error(msg);
+                    });
+                }
                 var reader = r.body.getReader(), decoder = new TextDecoder(), buffer = '';
                 var pump = function () {
                     return reader.read().then(function (step) {
@@ -228,13 +278,21 @@
                             try { event = JSON.parse(line); } catch (e) { return; }
                             if (event.delta) {
                                 acc += event.delta;
-                                $('.md', bubble).innerHTML = md(acc.replace(/```actions[\s\S]*$/, ''));
+                                // Прячем любой хвост действий из markdown
+                                var cleanText = acc.replace(/```(?:actions|json|tool_calls|tools)?[\s\S]*$/, '')
+                                                   .replace(/\[\s*\{\s*"type"[\s\S]*$/, '');
+                                var hasTools = /```(?:actions|json|tool_calls|tools)|\[\s*\{\s*"type"/i.test(acc);
+                                var rendered = md(cleanText.trim());
+                                if (hasTools) {
+                                    rendered += '<div class="ai-live-tool"><span class="live-dot"></span><span>Подготавливает действия…</span></div>';
+                                }
+                                $('.md', bubble).innerHTML = rendered;
                                 self.scroll();
                             }
                             if (event.error) throw new Error(event.error);
                             if (event.done) {
                                 self.render(event.message, answer);
-                                U.haptic(event.message.actions.length ? 'success' : 'tap');
+                                U.haptic((event.message.actions || []).length ? 'success' : 'tap');
                                 self.scroll();
                             }
                         });
@@ -244,12 +302,18 @@
                 return pump();
             })
             .catch(function (error) {
-                $('.md', bubble).innerHTML = '<p style="color: var(--danger)">' + esc(error.message) + '</p>';
-                U.haptic('error');
+                if (error.name === 'AbortError') {
+                    var cur = $('.md', bubble).innerHTML;
+                    $('.md', bubble).innerHTML = cur + '<p class="tiny faint" style="margin-top: 6px"><em>(ответ прерван)</em></p>';
+                } else {
+                    $('.md', bubble).innerHTML = '<div class="ai-error-box"><p>' + esc(error.message) + '</p></div>';
+                    U.haptic('error');
+                }
             })
             .then(function () {
                 bubble.classList.remove('typing');
                 self.busy = false;
+                self.setControls(false);
             });
     };
     Chat.prototype.apply = function (button) {
@@ -284,6 +348,42 @@
             if (done) { U.haptic('success'); U.toast(done > 1 ? 'Применено: ' + done : 'Применено'); }
         });
     };
+
+    // Глобальные обработчики для создания и удаления чатов
+    document.addEventListener('click', function (e) {
+        var newChatBtn = e.target.closest('[data-chat-new]');
+        if (newChatBtn) {
+            newChatBtn.disabled = true;
+            api('/api/ai/chats', {}).then(function (res) {
+                location.href = '/ai?chat=' + encodeURIComponent(res.id);
+            }).catch(function (err) {
+                newChatBtn.disabled = false;
+                fail(err);
+            });
+            return;
+        }
+        var delChatBtn = e.target.closest('[data-chat-del]');
+        if (delChatBtn) {
+            var cid = delChatBtn.getAttribute('data-chat-del');
+            if (window.confirm('Удалить этот разговор?')) {
+                delChatBtn.disabled = true;
+                api('/api/ai/chats/' + encodeURIComponent(cid) + '/delete', {}).then(function () {
+                    U.toast('Чат удалён', 'ok');
+                    var item = delChatBtn.closest('.thread-item');
+                    if (item) item.remove();
+                    if (new URLSearchParams(location.search).get('chat') === cid) {
+                        location.href = '/ai';
+                    } else {
+                        location.reload();
+                    }
+                }).catch(function (err) {
+                    delChatBtn.disabled = false;
+                    fail(err);
+                });
+            }
+            return;
+        }
+    });
     var chats = $$('[data-chat]').map(function (box) { return new Chat(box); });
     var pageChat = chats.filter(function (c) { return !c.box.closest('dialog'); })[0];
     if (pageChat) {
@@ -518,10 +618,13 @@
     $$('[data-col-add]').forEach(function (form) {
         form.addEventListener('submit', function (event) {
             event.preventDefault();
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn && btn.disabled) return;
+            if (btn) btn.disabled = true;
             var data = new FormData(form);
             fetch(form.action, { method: 'POST', body: data, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
                 .then(function (r) { if (!r.ok) throw new Error('Не получилось'); U.haptic('success'); location.reload(); })
-                .catch(fail);
+                .catch(function (err) { if (btn) btn.disabled = false; fail(err); });
         });
     });
     // Вид задач: доска или список

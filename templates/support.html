@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}Техподдержка — Лаборатория UNIT{% endblock %}
+{% block apptitle %}Техподдержка{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Помощь и обратная связь</span>
+    <h1>Техподдержка</h1>
+    <p class="sub">Задайте вопрос, сообщите об ошибке или предложите улучшение для сервисов лаборатории.</p>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-sheet-open="ticket-new-sheet">{{ icon('plus', 16) }}Новое обращение</button>
+  </div>
+</div>
+
+{% if is_staff %}
+<div class="tagbar" style="margin-bottom: 20px">
+  <a class="tag-chip {{ 'on' if not status_filter }}" href="/support">Все ({{ counts.get('all', 0) }})</a>
+  {% for k, v in statuses.items() %}
+  <a class="tag-chip {{ 'on' if status_filter == k }}" href="/support?status={{ k }}">{{ v }} ({{ counts.get(k, 0) }})</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="stack" style="gap: 24px">
+  <div>
+    <div class="section-title">
+      <h2>{{ 'Все обращения' if is_staff else 'Ваши обращения' }}</h2>
+      <span class="faint small">{{ tickets|length }} {{ 'обращение' if tickets|length == 1 else 'обращений' }}</span>
+    </div>
+
+    {% if tickets %}
+    <div class="stack-xs">
+      {% for t in tickets %}
+      <a class="panel row-link" href="/support/{{ t.id }}" style="padding: 14px 18px; display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit">
+        <span class="badge app-badge" style="width: 36px; height: 36px; flex: 0 0 auto">
+          {{ icon('chat' if t.status == 'in_progress' else 'check' if t.status == 'resolved' else 'help', 17) }}
+        </span>
+        <div class="grow stack-xs" style="gap: 3px; min-width: 0">
+          <div class="row" style="gap: 8px; align-items: center">
+            <b class="strong truncate" style="font-size: 15px">{{ t.subject }}</b>
+            <span class="chip tiny tone {{ 's-done' if t.status == 'resolved' else 's-active' if t.status == 'in_progress' else 's-paused' if t.status == 'closed' else '' }}">
+              {{ statuses.get(t.status, t.status) }}
+            </span>
+            {% if t.priority == 'urgent' %}
+            <span class="chip tiny tone s-danger">Срочно</span>
+            {% elif t.priority == 'high' %}
+            <span class="chip tiny tone s-warning">Высокий</span>
+            {% endif %}
+          </div>
+          <div class="meta small faint" style="display: flex; gap: 10px; align-items: center">
+            <span>{{ categories.get(t.category, t.category) }}</span>
+            {% if is_staff and t.member_id %}
+            <span>·</span>
+            <span>Автор: <b style="color: var(--ink)">{{ authors.get(t.member_id, t.member_id) }}</b></span>
+            {% endif %}
+            <span>·</span>
+            <span>Обновлено {{ t.updated_at.strftime('%d.%m в %H:%M') }}</span>
+          </div>
+        </div>
+        <span class="faint" style="flex: 0 0 auto">{{ icon('arrow', 16) }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="panel empty">
+      <div class="stack-sm" style="align-items: center">
+        <span class="ai-mark" style="width: 44px; height: 44px; border-radius: 12px">{{ icon('help', 20) }}</span>
+        <b>Обращений пока нет</b>
+        <span class="muted small">Если у вас возник вопрос или проблема, нажмите «Новое обращение».</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="panel" style="padding: 24px">
+    <div class="section-title" style="margin-bottom: 16px">
+      <h2>Частые вопросы и база знаний</h2>
+      <span class="faint small">быстрые ответы на типовые ситуации</span>
+    </div>
+    <div class="stack" style="gap: 16px">
+      {% for f in faq %}
+      <div class="inset" style="padding: 14px 18px">
+        <b style="display: block; margin-bottom: 6px; font-size: 14.5px; color: var(--ink)">{{ f.q }}</b>
+        <p class="muted small" style="margin: 0; line-height: 1.5">{{ f.a }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{# Диалог создания обращения #}
+<dialog class="sheet wide" id="ticket-new-sheet" aria-labelledby="t-new-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head">
+    <span class="badge app-badge" style="width: 32px; height: 32px">{{ icon('help', 17) }}</span>
+    <h3 id="t-new-title">Новое обращение</h3>
+    <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button>
+  </div>
+  <form method="post" action="/support/new" class="sheet-body stack-sm">
+    <label class="field">
+      <span class="label">Тема обращения</span>
+      <input class="input" name="subject" required placeholder="Кратко опишите проблему или вопрос" maxlength="200" autofocus>
+    </label>
+    <div class="fgrid two">
+      <label class="field">
+        <span class="label">Категория</span>
+        <select class="select" name="category">
+          {% for k, v in categories.items() %}
+          <option value="{{ k }}">{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span class="label">Приоритет</span>
+        <select class="select" name="priority">
+          {% for k, v in priorities.items() %}
+          <option value="{{ k }}" {{ 'selected' if k == 'normal' }}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label class="field">
+      <span class="label">Подробное описание</span>
+      <textarea class="textarea" name="body" required rows="6" placeholder="Опишите, что произошло, шаги воспроизведения или ваши пожелания…"></textarea>
+    </label>
+    <div class="sheet-foot" style="padding: 16px 0 0">
+      <button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button>
+      <button class="btn btn-primary" type="submit">{{ icon('send', 15) }}Отправить обращение</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

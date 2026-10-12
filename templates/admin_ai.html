@@ -21,8 +21,14 @@
         <span class="hint">{% if cfg.key_set %}Ключ сохранён ({{ cfg.masked }}). Пустое поле — оставить прежний.{% else %}Для локальных моделей можно без ключа.{% endif %}</span></label>
       <div class="fgrid">
         <label class="field"><span class="label">Основная модель агента</span><input class="input mono" name="model" value="{{ cfg.model }}" placeholder="claude-opus-4.7"></label>
-        <label class="field"><span class="label">Команда агента</span><input class="input mono" name="fast_model" value="{{ cfg.fast_model }}" placeholder="deepseek-v4-flash, deepseek-v4-pro">
-          <span class="hint">Быстрые модели через запятую: им основная поручает поиск и черновики, а потом проверяет.</span></label>
+        <label class="field">
+          <div class="row" style="gap: 8px; align-items: center">
+            <span class="label grow">Команда агента</span>
+            <button class="btn btn-quiet btn-xs" type="button" data-pull-team title="Подтянуть доступные быстрые модели из списка агрегатора">{{ icon('refresh', 12) }}Подтянуть через API</button>
+          </div>
+          <input class="input mono" name="fast_model" value="{{ cfg.fast_model }}" placeholder="deepseek-v4-flash, deepseek-v4-pro">
+          <span class="hint">Быстрые модели через запятую: им основная поручает поиск и черновики, а потом проверяет.</span>
+        </label>
       </div>
       <label class="field"><span class="label">Указания агенту</span><textarea class="textarea" name="prompt" data-autosize rows="3" placeholder="Например: оценки задач — в часах, не больше 8 ч на задачу; отчёты — коротко, списком.">{{ cfg.prompt }}</textarea></label>
     </div>
@@ -38,4 +44,32 @@
     <p class="small muted">Агент действует с правами человека, который его спрашивает: видит и меняет только то, что разрешено ему самому.</p>
   </div>
 </form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var b = document.querySelector('[data-pull-team]');
+  if (!b) return;
+  b.addEventListener('click', function() {
+    b.disabled = true;
+    b.textContent = 'Загрузка…';
+    fetch('/admin/ai/models').then(function(r) { return r.json(); }).then(function(res) {
+      b.disabled = false;
+      b.innerHTML = 'Подтянуть через API';
+      if (res.fast && res.fast.length) {
+        var inp = document.querySelector('input[name="fast_model"]');
+        if (inp) inp.value = res.fast.join(', ');
+        if (window.UNIT) window.UNIT.toast('Подтянуто моделей: ' + res.fast.length, 'ok');
+      } else if (res.error) {
+        if (window.UNIT) window.UNIT.toast(res.error, 'err');
+      } else {
+        if (window.UNIT) window.UNIT.toast('Подходящие модели не найдены', 'info');
+      }
+    }).catch(function(err) {
+      b.disabled = false;
+      b.innerHTML = 'Подтянуть через API';
+      if (window.UNIT) window.UNIT.toast(err.message || 'Ошибка связи', 'err');
+    });
+  });
+});
+</script>
 {% endblock %}

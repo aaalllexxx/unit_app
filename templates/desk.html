@@ -2,201 +2,60 @@
 {% from '_icons.html' import icon, kind_icon %}
 {% block title %}Рабочий стол — Лаборатория UNIT{% endblock %}
 {% block apptitle %}Рабочий стол{% endblock %}
+
 {% block content %}
-<div class="page-head">
-  <div class="titles">
-    <span class="eyebrow">Ваше место · {{ items|length }} {{ 'наработка' if items|length == 1 else 'наработок' }}</span>
-    <h1>Рабочий стол</h1>
-    <p class="sub">Заметки, чек-листы, ссылки, файлы и код. Привяжите к проекту и покажите команде — появится в его «Материалах».</p>
-  </div>
-</div>
-
-<div class="desk-layout" data-desk data-projects='{{ projects|map(attribute="id")|list|tojson }}'>
-  <div>
-    <div class="quick-add">
-      <button class="btn btn-primary" type="button" data-new="note">{{ icon('note', 16) }}Заметка</button>
-      <button class="btn btn-ghost" type="button" data-new="checklist">{{ icon('checklist', 16) }}Чек-лист</button>
-      <button class="btn btn-ghost" type="button" data-new="link">{{ icon('link', 16) }}Ссылка</button>
-      <button class="btn btn-ghost" type="button" data-new="code">{{ icon('code', 16) }}Код</button>
-      <label class="btn btn-ghost">{{ icon('upload', 16) }}Файл<input type="file" data-upload hidden multiple></label>
-      <button class="btn btn-ghost" type="button" data-git-open>{{ icon('git', 16) }}GitHub</button>
+<div class="desk-page" data-desk>
+  <header class="desk-bar">
+    <div class="desk-bar-title">
+      {{ icon('desk', 18) }}
+      <span>Мастерская</span>
     </div>
-    <div class="row-wrap" style="margin-bottom: 14px; gap: 8px">
-      <div class="searchbar" style="margin: 0; flex: 1 1 220px">{{ icon('search', 17) }}<input class="input" type="search" placeholder="Найти на столе" data-desk-search aria-label="Поиск"></div>
-      <div class="tagbar" style="margin: 0" data-desk-filter>
-        <button class="tag-chip on" type="button" data-kind="">Все</button>
-        {% for k, v in kinds.items() %}<button class="tag-chip" type="button" data-kind="{{ k }}">{{ v }}</button>{% endfor %}
-      </div>
-    </div>
-    <div class="drop-zone" data-drop hidden>Отпустите файлы — они лягут на стол</div>
-    <div class="desk-grid" data-desk-grid></div>
-    <div class="panel empty" data-desk-empty hidden>
-      <div class="stack-sm" style="align-items: center">
-        <span class="ai-mark" style="width: 46px; height: 46px; border-radius: 14px">{{ icon('desk', 22) }}</span>
-        <b style="color: var(--ink)">Стол пока пуст</b>
-        <span>Начните с заметки или перетащите сюда файлы.</span>
-      </div>
-    </div>
-
-    {% if shared %}
-    <div class="section-title" style="margin-top: 26px"><h2>От команды</h2><span class="faint small">общие материалы ваших проектов</span></div>
-    <div class="desk-grid">
-      {% for i in shared %}
-      <button class="desk-card {{ 'c-' ~ i.color if i.color }}" type="button" data-open-shared="{{ i.id }}">
-        <span class="dc-top">{{ kind_icon(i.kind, 13) }}{{ kinds[i.kind] }}</span>
-        <h4>{{ i.title or 'Без названия' }}</h4>
-        <span class="dc-foot">{{ i.author }}{% if i.project %}<span class="chip" style="height: 20px">{{ i.project }}</span>{% endif %}</span>
-      </button>
+    <div class="desk-bar-sep"></div>
+    <select class="select input-sm" data-desk-project aria-label="Фильтр по проекту" style="width: auto; max-width: 220px; font-size: 12.5px">
+      <option value="">Все проекты</option>
+      {% for p in projects %}
+      <option value="{{ p.id }}">{{ p.title }}</option>
       {% endfor %}
+    </select>
+    <div class="desk-bar-meta hide-sm">
+      <span class="faint">Файлы: {{ (used / 1048576)|round(1) }} из {{ (quota / 1048576)|int }} МБ</span>
     </div>
-    {% endif %}
-  </div>
+    <div class="desk-bar-grow"></div>
+    <span class="desk-save-state" data-desk-save>Сохранено</span>
+    <div class="desk-bar-sep"></div>
+    <button class="wt-btn" type="button" data-desk-tile title="Расположить открытые окна плиткой">{{ icon('grid', 14) }}<span class="hide-sm">Плитка</span></button>
+    <button class="wt-btn" type="button" data-desk-cascade title="Расположить открытые окна каскадом">{{ icon('layers', 14) }}<span class="hide-sm">Каскад</span></button>
+    <button class="wt-btn" type="button" data-desk-min-all title="Свернуть все окна">{{ icon('down', 14) }}<span class="hide-sm">Свернуть</span></button>
+    <button class="wt-btn" type="button" data-desk-clean title="Закрыть все окна на столе">{{ icon('x', 14) }}<span class="hide-sm">Очистить</span></button>
+  </header>
 
-  <aside class="stack">
-    <div class="panel">
-      <div class="panel-head"><h3>Мои задачи</h3><a class="spacer small muted" href="/home#focus">Все</a></div>
-      {% for t in tasks %}
-      <div class="task-row">
-        <button class="task-check" type="button" data-task-done="{{ t.id }}" data-was="{{ t.column }}" aria-label="Готово">{{ icon('check', 14) }}</button>
-        <div class="grow"><a class="t" href="/p/{{ t.project_id }}?task={{ t.id }}#tasks">{{ t.title }}</a>
-          <span class="meta">{{ names.get(t.project_id, '') }}{% if t.due %} · <span class="{{ 'late' if t.due < today }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}</span></div>
-      </div>
-      {% else %}<div class="all-good">{{ icon('check', 18) }}Задач нет</div>{% endfor %}
+  <main class="desk-canvas" data-desk-canvas>
+    <div class="desk-canvas-grid"></div>
+    <div class="desk-hint" data-desk-hint>
+      <span class="ai-mark" style="width: 48px; height: 48px; border-radius: 14px">{{ icon('desk', 22) }}</span>
+      <b>Рабочий стол пуст</b>
+      <span>Выберите инструмент в панели снизу или откройте сохранённую наработку</span>
     </div>
+    <div class="desk-snap" data-desk-snap hidden></div>
+  </main>
 
-    <div class="panel">
-      <div class="panel-head"><h3>Таймер</h3></div>
-      {% if running %}
-      <form method="post" action="/timer" class="panel-body row"><input type="hidden" name="next" value="/desk">
-        <span class="timer-pill" data-timer="{{ running.started_at.isoformat() }}"><span class="live-dot"></span><span data-timer-text>0:00</span></span>
-        <span class="grow small truncate">{{ running.note or names.get(running.project_id, '') }}</span>
-        <button class="btn btn-primary btn-sm" type="submit" name="action" value="stop">{{ icon('stop', 13) }}Стоп</button></form>
-      {% elif projects %}
-      <form method="post" action="/timer" class="panel-body stack-sm"><input type="hidden" name="next" value="/desk"><input type="hidden" name="action" value="start">
-        <select class="select" name="task_id"><option value="">Без задачи — только проект</option>{% for t in tasks %}<option value="{{ t.id }}">{{ t.title[:60] }}</option>{% endfor %}</select>
-        <div class="row" style="gap: 8px"><select class="select" name="project_id" style="flex: 1">{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select>
-          <button class="btn btn-primary" type="submit" aria-label="Запустить">{{ icon('play', 15) }}Старт</button></div>
-        <span class="tiny faint">Остановите — часы запишутся в учёт времени сами.</span>
-      </form>
-      {% else %}<div class="panel-body small faint">Таймер появится, когда вас добавят в проект.</div>{% endif %}
-    </div>
+  <nav class="desk-dock" data-desk-dock aria-label="Инструменты мастерской">
+    <div class="desk-dock-row" data-desk-dock-row></div>
+  </nav>
 
-    {% if ai_on %}
-    <div class="brief">
-      <div class="brief-head"><span class="ai-mark">{{ icon('spark', 15) }}</span><b>ИИ на столе</b></div>
-      <p class="small muted" style="margin-bottom: 10px">Откройте наработку и попросите: кратко пересказать, улучшить текст или превратить заметку в задачи проекта.</p>
-      <button class="btn btn-ghost btn-sm" type="button" data-ai-open data-ask="Посмотри на мой рабочий стол и подскажи, что из наработок стоит превратить в задачи или довести до конца.">{{ icon('spark', 14) }}Разобрать стол</button>
-    </div>
-    {% endif %}
-
-    <p class="tiny faint">Файлы: {{ (used / 1048576)|round(1) }} из {{ (quota / 1048576)|int }} МБ</p>
-  </aside>
+  <input type="file" id="desk-file-input" hidden multiple>
 </div>
 
-{# Редактор наработки #}
-<dialog class="sheet wide tall" id="desk-sheet" aria-labelledby="desk-title">
-  <div class="sheet-grip"></div>
-  <div class="sheet-head">
-    <span class="badge app-badge" style="width: 32px; height: 32px" data-ed-icon></span>
-    <input class="input" data-ed="title" placeholder="Название" aria-label="Название" id="desk-title" style="flex: 1; font-weight: 600; font-size: 16px; border-color: transparent; box-shadow: none; padding-left: 6px">
-    <span class="save-state" data-ed-state></span>
-    <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button>
-  </div>
-  <div class="sheet-body">
-    <div data-ed-pane="note"><textarea class="textarea" data-ed="body" data-autosize rows="10" placeholder="Пишите — сохранится само. Поддерживается **жирный**, списки и `код`."></textarea></div>
-    <div data-ed-pane="code" class="stack-sm">
-      <select class="select input-sm" data-ed="lang" style="width: auto">{% for l in langs %}<option>{{ l }}</option>{% endfor %}</select>
-      <textarea class="textarea code-area" data-ed="code" rows="14" spellcheck="false" placeholder="# код"></textarea>
-    </div>
-    <div data-ed-pane="link" class="stack-sm">
-      <input class="input" data-ed="url" type="url" inputmode="url" placeholder="https://…">
-      <textarea class="textarea" data-ed="linknote" data-autosize rows="3" placeholder="Зачем эта ссылка"></textarea>
-      <a class="btn btn-ghost btn-sm" data-ed-go target="_blank" rel="noopener noreferrer" style="align-self: flex-start">{{ icon('external', 14) }}Открыть</a>
-    </div>
-    <div data-ed-pane="checklist" class="stack-sm">
-      <div class="check-items" data-ed-items></div>
-      <input class="input" data-ed-add placeholder="Новый пункт — Enter">
-    </div>
-    <div data-ed-pane="file" class="stack-sm">
-      <div class="inset row" style="padding: 14px"><span class="badge app-badge">{{ icon('file', 18) }}</span>
-        <span class="grow stack-xs" style="gap: 0"><b class="small strong" data-ed-fname></b><span class="tiny faint" data-ed-fsize></span></span>
-        <a class="btn btn-ghost btn-sm" data-ed-download>{{ icon('down', 14) }}Скачать</a></div>
-      <img data-ed-preview alt="" hidden style="max-height: 360px; border-radius: 12px; align-self: flex-start">
-    </div>
+<script type="application/json" id="desk-data">{{ {
+  'items': items,
+  'projects': projects|map(attribute='id')|list,
+  'project_names': names,
+  'shared': shared,
+  'tasks': tasks|map(attribute='id')|list,
+  'langs': langs,
+  'colors': colors,
+  'ai_on': ai_on
+} | tojson }}</script>
 
-    <div class="fieldset">
-      <div class="fgrid keep">
-        <label class="field"><span class="label">Проект</span>
-          <select class="select" data-ed="project_id"><option value="">Без проекта</option>{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select></label>
-        <div class="field"><span class="label">Цвет</span><div class="swatches" data-ed-colors>
-          {% for c in colors %}<button type="button" data-color="{{ c }}" aria-label="{{ c or 'без цвета' }}" style="background: {{ {'': '#fff', 'blue': '#dfe5fd', 'teal': '#d4efeb', 'amber': '#fbebc8', 'rose': '#f8d9df', 'violet': '#e5dcfa'}[c] }}"></button>{% endfor %}</div></div>
-      </div>
-      <label class="toggle-row"><span class="grow"><b>Показать команде проекта</b><span>Появится в «Материалах» проекта</span></span><span class="switch"><input type="checkbox" data-ed="shared"><i></i></span></label>
-      <label class="toggle-row" style="padding-top: 0"><span class="grow"><b>Закрепить</b><span>Сверху на столе и на «Сегодня»</span></span><span class="switch"><input type="checkbox" data-ed="pinned"><i></i></span></label>
-    </div>
-  </div>
-  <div class="sheet-foot">
-    <button class="btn btn-danger btn-sm" type="button" data-ed-delete>{{ icon('trash', 14) }}Удалить</button>
-    <span class="grow"></span>
-    {% if ai_on %}
-    <button class="btn btn-ghost btn-sm" type="button" data-ed-ai="Перескажи эту наработку кратко, выдели главное.">{{ icon('spark', 14) }}Кратко</button>
-    <button class="btn btn-ghost btn-sm" type="button" data-ed-ai="Преврати эту наработку в задачи проекта: предложи их действиями.">{{ icon('spark', 14) }}В задачи</button>
-    {% endif %}
-    <button class="btn btn-primary btn-sm" type="button" data-sheet-close>Готово</button>
-  </div>
-</dialog>
-
-<dialog class="sheet wide" id="shared-sheet" aria-labelledby="shared-title">
-  <div class="sheet-grip"></div>
-  <div class="sheet-head"><h3 id="shared-title" data-sh-title></h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
-  <div class="sheet-body"><div data-sh-body></div></div>
-  <div class="sheet-foot"><span class="grow tiny faint" data-sh-meta></span><button class="btn btn-ghost btn-sm" type="button" data-sh-copy>{{ icon('copy', 14) }}Взять себе</button></div>
-</dialog>
-
-<dialog class="sheet wide tall" id="git-sheet" aria-labelledby="git-title">
-  <div class="sheet-grip"></div>
-  <div class="sheet-head">
-    <span class="badge app-badge" style="width: 32px; height: 32px">{{ icon('git', 18) }}</span>
-    <h3 id="git-title" style="margin: 0; font-size: 16px; font-weight: 600">Репозитории GitHub</h3>
-    <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button>
-  </div>
-  <div class="sheet-body stack-sm">
-    <div id="git-unlinked" class="panel inset" hidden>
-      <p class="muted">Привяжите свой GitHub аккаунт, чтобы открывать репозитории и стягивать наработки прямо на рабочий стол мастерской.</p>
-      <div class="fgrid two" style="margin-top: 10px">
-        <label class="field"><span class="label">Логин GitHub</span><input class="input" id="git-login-input" placeholder="например, octocat"></label>
-        <label class="field"><span class="label">Токен (опционально, для приватных)</span><input class="input" id="git-token-input" type="password" placeholder="ghp_…"></label>
-      </div>
-      <button class="btn btn-primary btn-sm" type="button" id="git-link-btn" style="margin-top: 8px">{{ icon('check', 14) }}Привязать аккаунт</button>
-    </div>
-
-    <div id="git-linked" hidden>
-      <div class="row" style="margin-bottom: 12px; gap: 8px; align-items: center">
-        <span class="small faint">Аккаунт: <b id="git-user-label" style="color: var(--ink)"></b></span>
-        <button class="btn btn-quiet btn-xs" type="button" id="git-unlink-btn">Отвязать</button>
-        <span class="grow"></span>
-        <div class="searchbar" style="margin: 0; flex: 0 1 200px">{{ icon('search', 15) }}<input class="input input-sm" type="search" placeholder="Поиск репозиториев" id="git-search" aria-label="Поиск"></div>
-      </div>
-
-      <div class="field" style="margin-bottom: 12px">
-        <span class="label">Привязать наработки к проекту (опционально)</span>
-        <select class="select input-sm" id="git-project-select">
-          <option value="">Без проекта (только на стол)</option>
-          {% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}
-        </select>
-      </div>
-
-      <div id="git-repo-list" class="stack-xs" style="max-height: 400px; overflow-y: auto">
-        <div class="empty">Загрузка репозиториев…</div>
-      </div>
-    </div>
-  </div>
-  <div class="sheet-foot">
-    <span class="grow tiny faint">README, открытые задачи и ссылки автоматически стянутся на стол</span>
-    <button class="btn btn-primary btn-sm" type="button" data-sheet-close>Закрыть</button>
-  </div>
-</dialog>
-
-<script type="application/json" id="desk-data">{{ items|tojson }}</script>
+<script src="/static/desk.js" defer></script>
 {% endblock %}
-{% block scripts %}<script src="/static/desk.js?v=1" defer></script>{% endblock %}

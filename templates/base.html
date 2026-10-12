@@ -56,12 +56,14 @@
       <a class="side-link ext" href="{{ sv.url }}" title="{{ sv.description or sv.name }}">{{ icon(sv.icon, 18) }}<span class="full">{{ sv.name }}</span><span class="short">{{ sv.name.split()[0] }}</span><span class="count">{{ icon('external', 13) }}</span></a>
       {% endfor %}
       {% endif %}
-      <a class="side-link" href="{{ support_url }}">{{ icon('chat', 18) }}<span class="full">Поддержка</span><span class="short">Поддержка</span></a>
       <button class="side-link tab tab-more" type="button" data-sheet-open="more-sheet">{{ icon('more', 18) }}<span class="short">Ещё</span>{% if unread %}<span class="dot-count">{{ unread }}</span>{% endif %}</button>
     </nav>
     {% else %}<nav></nav>{% endif %}
     {% if me %}
     <div class="side-foot">
+      <div class="side-subnav">
+        <a class="side-sublink {{ 'on' if here.startswith('/support') }}" href="/support">{{ icon('help', 16) }}<span class="full">Поддержка</span></a>
+      </div>
       <div class="user-card">
         <a class="avatar" href="{{ '/people/' ~ me.id if can('page.people') else issuer ~ '/apps' }}" title="Профиль">{{ initials(me.name) }}</a>
         <div class="who"><b>{{ me.name }}</b>
@@ -109,7 +111,7 @@
       {% if can('admin.overview') %}<a href="/admin">{{ icon('chart', 22) }}Обзор</a>{% endif %}
       {% if can('page.admin') %}<a href="/access">{{ icon('key', 22) }}Доступы</a>{% endif %}
       {% if can('ai.settings') %}<a href="/admin/ai">{{ icon('settings', 22) }}ИИ лаборатории</a>{% endif %}
-      <a href="{{ support_url }}">{{ icon('chat', 22) }}Поддержка</a>
+      <a href="/support">{{ icon('help', 22) }}Поддержка</a>
       {% for sv in services %}<a href="{{ sv.url }}">{{ icon(sv.icon, 22) }}{{ sv.name }}</a>{% endfor %}
       <a href="{{ issuer }}/apps">{{ icon('key', 22) }}UNIT ID</a>
     </div>

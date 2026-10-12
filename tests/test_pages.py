@@ -45,7 +45,7 @@ def client(mid=None):
 class PagesTest(unittest.TestCase):
     def test_head_sees_everything(self):
         c = client("h")
-        for url in ["/home", "/projects", f"/p/{PID}", "/people", "/people/h", "/d/dev", "/time", "/admin"]:
+        for url in ["/home", "/projects", f"/p/{PID}", "/people", "/people/h", "/d/dev", "/time", "/admin", "/support"]:
             self.assertEqual(c.get(url).status_code, 200, url)
 
     def test_customer_and_guest(self):

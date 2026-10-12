@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials %}
+{% block title %}{{ ticket.subject }} — Техподдержка{% endblock %}
+{% block apptitle %}Обращение #{{ ticket.id }}{% endblock %}
+{% block back %}/support{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <div class="row" style="gap: 8px; align-items: center; margin-bottom: 4px">
+      <span class="chip tiny tone {{ 's-done' if ticket.status == 'resolved' else 's-active' if ticket.status == 'in_progress' else 's-paused' if ticket.status == 'closed' else '' }}">
+        {{ statuses.get(ticket.status, ticket.status) }}
+      </span>
+      <span class="chip tiny">{{ categories.get(ticket.category, ticket.category) }}</span>
+      {% if ticket.priority == 'urgent' %}
+      <span class="chip tiny tone s-danger">Срочно</span>
+      {% elif ticket.priority == 'high' %}
+      <span class="chip tiny tone s-warning">Высокий</span>
+      {% endif %}
+    </div>
+    <h1>{{ ticket.subject }}</h1>
+    <p class="sub">Создано {{ ticket.created_at.strftime('%d.%m.%Y в %H:%M') }} · Автор: {{ members[ticket.member_id].name if ticket.member_id in members else ticket.member_id }}</p>
+  </div>
+  <div class="actions">
+    {% if is_staff or ticket.member_id == me.id %}
+    <form method="post" action="/support/{{ ticket.id }}/status" class="row" style="gap: 6px">
+      {% if ticket.status != 'resolved' %}
+      <button class="btn btn-ghost btn-sm" type="submit" name="status" value="resolved">{{ icon('check', 14) }}Решено</button>
+      {% else %}
+      <button class="btn btn-ghost btn-sm" type="submit" name="status" value="in_progress">{{ icon('refresh', 14) }}Переоткрыть</button>
+      {% endif %}
+      {% if is_staff and ticket.status != 'in_progress' and ticket.status != 'resolved' %}
+      <button class="btn btn-ghost btn-sm" type="submit" name="status" value="in_progress">В работу</button>
+      {% endif %}
+      {% if is_staff and ticket.status != 'closed' %}
+      <button class="btn btn-quiet btn-sm" type="submit" name="status" value="closed">Закрыть</button>
+      {% endif %}
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="stack" style="gap: 20px; max-width: 860px">
+  <div class="stack-sm" style="gap: 14px">
+    {% for msg in messages %}
+    {% set sender = members.get(msg.member_id) %}
+    <div class="panel" style="padding: 16px 20px; border-left: 3px solid {{ 'var(--accent)' if msg.is_staff else 'var(--surface-3)' }}">
+      <div class="row" style="align-items: center; gap: 10px; margin-bottom: 10px">
+        <span class="avatar" style="width: 30px; height: 30px; font-size: 12px">{{ initials(sender.name if sender else '?') }}</span>
+        <div class="stack-xs" style="gap: 0">
+          <div class="row" style="gap: 6px; align-items: center">
+            <b class="strong small">{{ sender.name if sender else 'Пользователь' }}</b>
+            {% if msg.is_staff %}
+            <span class="chip tiny tone s-active">Поддержка UNIT</span>
+            {% endif %}
+          </div>
+          <span class="tiny faint">{{ msg.created_at.strftime('%d.%m.%Y в %H:%M') }}</span>
+        </div>
+      </div>
+      <div class="md" style="font-size: 14px; line-height: 1.6; white-space: pre-wrap">{{ msg.body }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Форма ответа #}
+  <div class="panel" style="padding: 20px">
+    <h3 style="margin: 0 0 12px; font-size: 16px">Ваш ответ</h3>
+    <form method="post" action="/support/{{ ticket.id }}/reply" class="stack-sm">
+      <textarea class="textarea" name="body" rows="4" required placeholder="Напишите сообщение…"></textarea>
+      <div class="row" style="justify-content: flex-end; align-items: center; gap: 10px; margin-top: 6px">
+        <button class="btn btn-primary btn-sm" type="submit">{{ icon('send', 14) }}Отправить ответ</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

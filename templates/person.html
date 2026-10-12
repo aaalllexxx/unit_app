@@ -65,11 +65,11 @@
     </div>
     <div class="panel">
       <div class="panel-head"><h3>Контакты</h3></div>
-      <dl class="panel-body kv" style="margin: 0; grid-template-columns: 90px minmax(0, 1fr)">
+      <dl class="panel-body kv" style="margin: 0; grid-template-columns: 100px minmax(0, 1fr); align-items: center">
         <dt>Почта</dt><dd>{% if m.email %}<a href="mailto:{{ m.email }}" style="color: var(--accent)">{{ m.email }}</a>{% else %}—{% endif %}</dd>
         <dt>Telegram</dt><dd>{% if m.contacts.get('telegram') %}<a href="https://t.me/{{ m.contacts.get('telegram')|replace('@', '') }}" target="_blank" rel="noopener" style="color: var(--accent)">{{ m.contacts.get('telegram') }}</a>{% else %}—{% endif %}</dd>
         <dt>Телефон</dt><dd>{% if m.contacts.get('phone') %}<a href="tel:{{ m.contacts.get('phone') }}" style="color: var(--accent)">{{ m.contacts.get('phone') }}</a>{% else %}—{% endif %}</dd>
-        <dt>GitHub</dt><dd>{% if m.contacts.get('github') %}<a href="https://github.com/{{ m.contacts.get('github')|replace('@', '') }}" target="_blank" rel="noopener" style="color: var(--accent)">github.com/{{ m.contacts.get('github') }}</a>{% if own %}<form method="post" style="display: inline; margin-left: 8px"><input type="hidden" name="github_unlink" value="1"><button class="btn btn-quiet btn-xs" type="submit">Отвязать</button></form>{% endif %}{% else %}—{% if own %}<button class="btn btn-quiet btn-xs" type="button" data-sheet-open="profile-sheet" style="margin-left: 8px">Привязать</button>{% endif %}{% endif %}</dd>
+        <dt>GitHub</dt><dd style="display: flex; align-items: center; justify-content: space-between; gap: 8px">{% if m.contacts.get('github') %}<a href="https://github.com/{{ m.contacts.get('github')|replace('@', '') }}" target="_blank" rel="noopener" class="truncate" style="color: var(--accent); max-width: 180px">github.com/{{ m.contacts.get('github') }}</a>{% if own %}<form method="post" style="margin: 0"><input type="hidden" name="github_unlink" value="1"><button class="btn btn-quiet btn-xs" type="submit">Отвязать</button></form>{% endif %}{% else %}—{% if own %}<button class="btn btn-quiet btn-xs" type="button" data-sheet-open="profile-sheet">Привязать</button>{% endif %}{% endif %}</dd>
       </dl>
     </div>
     <div class="panel">
@@ -86,33 +86,45 @@
 <dialog class="sheet wide" id="profile-sheet" aria-labelledby="pf-title" {{ 'data-open' if open_edit }}>
   <div class="sheet-grip"></div>
   <div class="sheet-head"><h3 id="pf-title">{{ 'Ваш профиль' if own else 'Профиль · ' ~ m.name }}</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
-  <form method="post" class="sheet-body" id="profile-form">
-    <div class="fgrid two profile-row">
+  <form method="post" class="sheet-body" id="profile-form" data-pages data-pages-tabs>
+    <div class="pages-tabs" data-pages-nav></div>
+    <section data-page data-title="Основное" class="stack-sm" style="gap: 14px">
       <label class="field"><span class="label">Должность</span><input class="input" name="position" value="{{ m.position }}" placeholder="Бэкенд-разработчик" autofocus></label>
-      <label class="field"><span class="label">Telegram</span><input class="input" name="telegram" value="{{ m.contacts.get('telegram', '') }}" placeholder="@ник"></label>
-      <label class="field"><span class="label">Телефон</span><input class="input" name="phone" value="{{ m.contacts.get('phone', '') }}" type="tel" inputmode="tel" placeholder="+7…"></label>
-      <label class="field"><span class="label">GitHub</span><input class="input" name="github" value="{{ m.contacts.get('github', '') }}" placeholder="Логин (например, octocat)"></label>
-    </div>
-    <label class="field"><span class="label">GitHub токен (опционально, для приватных репозиториев)</span><input class="input" type="password" name="github_token" placeholder="ghp_…"></label>
-    <label class="field"><span class="label">О себе</span><textarea class="textarea" name="about" data-autosize rows="2" placeholder="Чем занимаетесь и в чём сильны">{{ m.about }}</textarea></label>
-    <div class="field"><span class="label">Навыки</span><span class="hint">Введите навык и Enter; уровень — точками от 1 до 5</span>
-      <div class="skills-edit" data-skills>
-        {% for s in m.skills %}<span data-skill="{{ s.name }}" data-level="{{ s.level }}"></span>{% endfor %}
-        <input class="input" data-skill-input placeholder="+ Python, Figma…" aria-label="Новый навык">
+      <label class="field"><span class="label">О себе</span><textarea class="textarea" name="about" data-autosize rows="3" placeholder="Чем занимаетесь и в чём сильны">{{ m.about }}</textarea></label>
+      <div class="field"><span class="label">Навыки</span><span class="hint">Введите навык и Enter; уровень — точками от 1 до 5</span>
+        <div class="skills-edit" data-skills>
+          {% for s in m.skills %}<span data-skill="{{ s.name }}" data-level="{{ s.level }}"></span>{% endfor %}
+          <input class="input" data-skill-input placeholder="+ Python, Figma…" aria-label="Новый навык">
+        </div>
       </div>
-    </div>
-    <label class="toggle-row"><span class="grow"><b>Письма о задачах и проектах</b><span>Уведомления в портале приходят всегда</span></span>
-      <span class="switch"><input type="checkbox" name="notify_email" value="1" {{ 'checked' if m.notify_email }}><i></i></span></label>
+    </section>
+    <section data-page data-title="Контакты и Git" class="stack-sm" style="gap: 14px" hidden>
+      <div class="fgrid two">
+        <label class="field"><span class="label">Telegram</span><input class="input" name="telegram" value="{{ m.contacts.get('telegram', '') }}" placeholder="@ник"></label>
+        <label class="field"><span class="label">Телефон</span><input class="input" name="phone" value="{{ m.contacts.get('phone', '') }}" type="tel" inputmode="tel" placeholder="+7…"></label>
+      </div>
+      <div class="fieldset">
+        <span class="label-mono">Интеграция с GitHub</span>
+        <label class="field"><span class="label">GitHub</span><input class="input" name="github" value="{{ m.contacts.get('github', '') }}" placeholder="Логин (например, octocat)"></label>
+        <label class="field"><span class="label">GitHub токен (опционально, для приватных репозиториев)</span><input class="input" type="password" name="github_token" placeholder="ghp_…"></label>
+      </div>
+    </section>
+    <section data-page data-title="Уведомления" class="stack-sm" style="gap: 14px" hidden>
+      <label class="toggle-row"><span class="grow"><b>Письма о задачах и проектах</b><span>Уведомления в портале приходят всегда</span></span>
+        <span class="switch"><input type="checkbox" name="notify_email" value="1" {{ 'checked' if m.notify_email }}><i></i></span></label>
+    </section>
     {% if head %}
-    <div class="fieldset">
-      <span class="label-mono">Для руководителя</span>
-      <div class="fgrid three">
-        <label class="field"><span class="label">Грейд</span><select class="select" name="grade"><option value="">—</option>{% for g in grades %}<option {{ 'selected' if g == m.grade }}>{{ g }}</option>{% endfor %}</select></label>
-        <label class="field"><span class="label">Команда</span><select class="select" name="direction_id"><option value="">—</option>{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == m.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
-        <label class="field"><span class="label">Группа</span><select class="select" name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if t.id == m.team_id }}>{{ t.title }}</option>{% endfor %}</select></label>
+    <section data-page data-title="Управление" class="stack-sm" style="gap: 14px" hidden>
+      <div class="fieldset">
+        <span class="label-mono">Для руководителя</span>
+        <div class="fgrid three">
+          <label class="field"><span class="label">Грейд</span><select class="select" name="grade"><option value="">—</option>{% for g in grades %}<option {{ 'selected' if g == m.grade }}>{{ g }}</option>{% endfor %}</select></label>
+          <label class="field"><span class="label">Команда</span><select class="select" name="direction_id"><option value="">—</option>{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == m.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
+          <label class="field"><span class="label">Группа</span><select class="select" name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if t.id == m.team_id }}>{{ t.title }}</option>{% endfor %}</select></label>
+        </div>
+        {% if can('page.admin') %}<a class="disclose" href="/access/person/{{ m.id }}" style="margin-top: 10px">{{ icon('key', 13) }}Теги, права и лимиты — в «Доступах»</a>{% endif %}
       </div>
-      {% if can('page.admin') %}<a class="disclose" href="/access/person/{{ m.id }}">{{ icon('key', 13) }}Теги, права и лимиты — в «Доступах»</a>{% endif %}
-    </div>
+    </section>
     {% endif %}
   </form>
   <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="profile-form">{{ icon('check', 15) }}Сохранить</button></div>

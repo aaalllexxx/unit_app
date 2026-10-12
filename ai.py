@@ -110,13 +110,72 @@ def count(s, member_id: str, tokens: int = 0) -> None:
     s.commit()
 
 
+def fast_models(s) -> List[str]:
+    raw = _get(s, KEYS["fast_model"]).strip()
+    if not raw:
+        return []
+    return [m.strip() for m in raw.split(",") if m.strip()]
+
+
+def fetch_models(s, base_url: str = "", api_key: str = "") -> dict:
+    """Запрашивает /models у агрегатора и отбирает модели для чата и быстрые модели для команды агента."""
+    base = (base_url or _get(s, KEYS["base_url"])).strip().rstrip("/")
+    if base.endswith("/chat/completions"):
+        base = base[:-len("/chat/completions")].rstrip("/")
+    if not base:
+        raise AiError("Не указан адрес API агрегатора")
+    url = base if base.endswith("/models") else base + "/models"
+    key = (api_key if api_key is not None and api_key != "" else _get(s, KEYS["api_key"])).strip()
+    headers = {"Accept": "application/json"}
+    if key:
+        headers["Authorization"] = "Bearer " + key
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as err:
+        raise AiError(_http_error(err)) from err
+    except Exception as err:
+        raise AiError(f"Не удалось связаться с API агрегатора: {err}") from err
+
+    raw_list = data.get("data") if isinstance(data, dict) else data
+    if not isinstance(raw_list, list):
+        raw_list = data.get("models") if isinstance(data, dict) else []
+    if not isinstance(raw_list, list):
+        raw_list = []
+
+    skip_keywords = ("embed", "whisper", "tts", "audio", "dall", "flux", "veo", "sora", "moderation", "vision-only", "guard")
+    chat_models = []
+    for item in raw_list:
+        mid = item.get("id") if isinstance(item, dict) else str(item)
+        if not mid or not isinstance(mid, str):
+            continue
+        mid_lower = mid.lower()
+        if any(sk in mid_lower for sk in skip_keywords):
+            continue
+        chat_models.append(mid)
+
+    fast_keywords = ("flash", "mini", "haiku", "deepseek-chat", "lite", "small", "turbo", "8b", "7b", "fast")
+    fast_team = [m for m in chat_models if any(k in m.lower() for k in fast_keywords)]
+    if not fast_team:
+        fast_team = chat_models[:3]
+
+    return {
+        "models": chat_models,
+        "fast_team": fast_team[:4],
+        "fast_str": ", ".join(fast_team[:4])
+    }
+
+
 # ─── Вызов ──────────────────────────────────────────────────────────────────
 def _request(s, messages: List[dict], stream: bool, fast: bool, max_tokens: int, json_only: bool):
     base = _get(s, KEYS["base_url"]).rstrip("/")
     if not base or not _get(s, KEYS["model"]):
         raise AiError("ИИ не настроен — руководитель включает его в «Обзор → ИИ»")
     url = base if base.endswith("/chat/completions") else base + "/chat/completions"
-    model = (_get(s, KEYS["fast_model"]) if fast else "") or _get(s, KEYS["model"])
+    candidates = fast_models(s)
+    fast_picked = candidates[0] if candidates else ""
+    model = (fast_picked if fast else "") or _get(s, KEYS["model"])
     payload = {"model": model, "messages": messages, "temperature": 0.4, "max_tokens": max(512, max_tokens)}
     if json_only:
         payload["response_format"] = {"type": "json_object"}

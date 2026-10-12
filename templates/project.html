@@ -119,7 +119,8 @@
       {% if member %}
       <form class="col-add" method="post" action="/p/{{ p.id }}/task" data-col-add>
         <input type="hidden" name="column" value="{{ key }}">
-        <input class="input" name="title" placeholder="+ Задача" required aria-label="Новая задача в «{{ name }}»">
+        <input class="input" name="title" placeholder="Новая задача..." required aria-label="Новая задача в «{{ name }}»">
+        <button class="btn btn-primary btn-sm btn-icon" type="submit" aria-label="Добавить задачу" title="Добавить задачу">{{ icon('plus', 15) }}</button>
       </form>
       {% endif %}
     </div>

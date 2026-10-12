@@ -8,13 +8,18 @@
       <div class="chat-suggest">
         <button class="chip-btn" type="button" data-ask="С чего мне начать сегодня? Учти сроки и приоритеты.">С чего начать сегодня?</button>
         <button class="chip-btn" type="button" data-ask="Где риски в моих проектах и что сделать, чтобы успеть в срок?">Где риски?</button>
+        <button class="chip-btn" type="button" data-ask="Декомпозируй проект на задачи с дедлайнами, частями и оценками.">Декомпозиция задач</button>
         <button class="chip-btn" type="button" data-ask="Составь мне план на эту неделю по дням.">План на неделю</button>
-        <button class="chip-btn" type="button" data-ask="Напиши отчёт о том, что сделано за неделю, — для руководителя.">Отчёт за неделю</button>
       </div>
     </div>
   </div>
   <form class="chat-input" data-chat-form>
-    <textarea class="textarea" data-autosize rows="1" placeholder="Спросите ИИ или попросите что-то сделать…" aria-label="Вопрос ИИ"></textarea>
-    <button class="btn btn-accent" type="submit" aria-label="Отправить">{{ icon('send', 18) }}</button>
+    <div class="ci-wrap">
+      <textarea class="textarea" data-autosize rows="1" placeholder="Спросите ИИ, попросите разбить на шаги или изменить дедлайны…" aria-label="Вопрос ИИ"></textarea>
+      <div class="ci-actions">
+        <button class="btn btn-accent ci-send" type="submit" aria-label="Отправить" title="Отправить">{{ icon('send', 17) }}</button>
+        <button class="btn btn-danger ci-stop" type="button" data-chat-stop aria-label="Прервать" title="Прервать генерацию" hidden>{{ icon('stop', 16) }}</button>
+      </div>
+    </div>
   </form>
 </div>

@@ -358,5 +358,45 @@ class GitIntegrationTest(unittest.TestCase):
         self.assertEqual(c.get("/api/git/repos").status_code, 400)
 
 
+class SupportSectionTest(unittest.TestCase):
+    def test_support_ticket_flow(self):
+        c = T.client("m1")
+        # 1. Главная поддержки
+        res = c.get("/support")
+        self.assertEqual(res.status_code, 200)
+
+        # 2. Создание обращения
+        r = c.post("/support/new", data={
+            "subject": "Не работает таймер",
+            "category": "tech",
+            "priority": "high",
+            "body": "После нажатия на паузу таймер сбрасывается."
+        }, follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+
+        with M.Session() as s:
+            t = s.query(M.SupportTicket).filter_by(member_id="m1").first()
+            self.assertIsNotNone(t)
+            self.assertEqual(t.subject, "Не работает таймер")
+            self.assertEqual(t.status, "open")
+            tid = t.id
+
+            msg = s.query(M.SupportMessage).filter_by(ticket_id=tid).first()
+            self.assertIsNotNone(msg)
+            self.assertIn("После нажатия", msg.body)
+
+        # 3. Ответ в ветке
+        reply_res = c.post(f"/support/{tid}/reply", data={"body": "Дополнительный комментарий"}, follow_redirects=True)
+        self.assertEqual(reply_res.status_code, 200)
+
+        # 4. Смена статуса
+        status_res = c.post(f"/support/{tid}/status", data={"status": "resolved"}, follow_redirects=True)
+        self.assertEqual(status_res.status_code, 200)
+        with M.Session() as s:
+            t = s.get(M.SupportTicket, tid)
+            self.assertEqual(t.status, "resolved")
+
+
 if __name__ == "__main__":
     unittest.main()
+

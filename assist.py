@@ -30,25 +30,32 @@ _ACTIONS = re.compile(r"```actions\s*(\[.*?\])\s*```", re.S)
 HISTORY = 16
 
 SYSTEM = """Ты — ИИ-помощник IT-лаборатории UNIT (проекты по безопасности, разработке ПО и нейросетям).
-Помогаешь сотрудникам и руководителям доводить проекты до результата: планировать, разбивать работу,
-находить риски, готовить отчёты и тексты, разбирать код и идеи.
+Помогаешь сотрудникам и руководителям доводить проекты до результата: планировать, декомпозировать задачи,
+находить риски, готовить отчёты и тексты, разбирать код и архитектуру.
 
 Правила:
-- Отвечай по-русски, по делу и коротко. Разметка: **жирный**, списки, `код`, блоки ```код```, заголовки ###.
+- Отвечай по-русски, по делу и структурированно. Разметка: **жирный**, списки, `код`, блоки ```код```, заголовки ###.
 - Опирайся на данные ниже. Не выдумывай задачи, сроки и людей, которых нет.
-- Когда уместно конкретное действие в портале, предложи его блоком в самом конце ответа:
+- Когда предлагаешь или выполняешь действия в портале, ВСЕГДА оформи их блоком ```actions в самом конце ответа:
 ```actions
-[{"type": "task", "project_id": 3, "title": "…", "assignee_id": "…", "due": "2026-10-20", "part_id": 5, "about": "…", "priority": 2}]
+[
+  {"type": "task", "project_id": 1, "part_id": 2, "title": "Название", "assignee_id": "...", "due": "2026-10-20", "estimate": 4, "about": "...", "priority": 2}
+]
 ```
-Типы действий:
-  task — новая задача (project_id и title обязательны; остальное по желанию; priority 1 срочно, 2 обычно, 3 потом);
-  part — новая часть проекта {"type":"part","project_id":…,"title":"…"};
-  move — сменить колонку задачи {"type":"move","task_id":…,"column":"todo|doing|review|done"};
-  journal — запись в журнал проекта {"type":"journal","project_id":…,"text":"…"};
-  note — заметка на рабочий стол {"type":"note","title":"…","body":"…"};
-  checklist — чек-лист на стол {"type":"checklist","title":"…","items":["…","…"]}.
-- Используй только id из данных. Не больше 12 действий за раз. Если действий не нужно — блок не добавляй.
-- Блок actions пиши только в конце, после текста ответа, и не упоминай его в тексте."""
+Доступные типы действий:
+  task — создать задачу (project_id и title обязательны; part_id, assignee_id, due, estimate в часах, about, priority 1/2/3);
+  task_edit — изменить задачу {"type": "task_edit", "task_id": 12, "title": "...", "about": "...", "estimate": 2, "column": "done"};
+  move — сменить статус задачи {"type": "move", "task_id": 12, "column": "todo|doing|review|done"};
+  part — создать часть проекта {"type": "part", "project_id": 1, "title": "..."};
+  journal — запись в журнал проекта {"type": "journal", "project_id": 1, "text": "..."};
+  comment — комментарий к задаче {"type": "comment", "task_id": 12, "text": "..."};
+  checklist_item — добавить пункт в чек-лист задачи {"type": "checklist_item", "task_id": 12, "text": "..."};
+  note — заметка на рабочий стол {"type": "note", "title": "...", "body": "...", "project_id": 1};
+  checklist — чек-лист на стол {"type": "checklist", "title": "...", "items": ["..."], "project_id": 1};
+  code — сниппет кода на стол {"type": "code", "title": "...", "body": "...", "project_id": 1};
+  link — ссылка на стол {"type": "link", "title": "...", "url": "...", "project_id": 1}.
+- Количество действий не ограничено: создавай столько задач и частей, сколько реально нужно для полной декомпозиции.
+- Блок actions пиши строго в самом конце ответа, без дополнительного текста внутри блока."""
 
 
 # ─── Контекст ───────────────────────────────────────────────────────────────
@@ -132,21 +139,71 @@ def context(person, project_id=None, item_id=None) -> str:
 
 
 def split_actions(text: str) -> tuple:
-    """Текст ответа и предложенные действия (блок ```actions```)."""
+    """Текст ответа и предложенные действия (блок ```actions или JSON-массив инструментов)."""
+    if not text:
+        return "", []
     actions = []
-    match = _ACTIONS.search(text or "")
-    if match:
+
+    # 1. Поиск блока в markdown-ограждениях (actions, json, tool_calls, tools или пустой fence)
+    patterns = [
+        re.compile(r"```(?:actions|json|tool_calls|tools)?\s*(\[\s*\{[\s\S]*?\}\s*\])\s*```", re.IGNORECASE),
+        re.compile(r"```actions\s*([\s\S]*?)\s*```", re.IGNORECASE),
+        re.compile(r"```\s*(\[\s*\{[\s\S]*?\"type\"[\s\S]*?\}\s*\])\s*```", re.IGNORECASE),
+    ]
+
+    matched_span = None
+    raw_content = ""
+    for pat in patterns:
+        m = pat.search(text)
+        if m:
+            matched_span = (m.start(), m.end())
+            raw_content = m.group(1).strip()
+            break
+
+    # 2. Если в блоке кода не найдено, ищем сырой JSON-массив с "type" в конце текста
+    if not matched_span:
+        raw_m = re.search(r"(\[\s*\{\s*\"type\"\s*:[\s\S]*?\}\s*\])\s*$", text)
+        if raw_m:
+            matched_span = (raw_m.start(), raw_m.end())
+            raw_content = raw_m.group(1).strip()
+
+    if raw_content:
         try:
-            raw = json.loads(match.group(1))
-            actions = [a for a in raw if isinstance(a, dict) and a.get("type") in ACTION_TYPES][:12]
-        except ValueError:
-            actions = []
-        text = (text[:match.start()] + text[match.end():]).strip()
+            raw = json.loads(raw_content)
+            if isinstance(raw, list):
+                actions = [a for a in raw if isinstance(a, dict) and a.get("type") in ACTION_TYPES]
+        except Exception:
+            # Fallback: вытаскиваем отдельные JSON-объекты регуляркой
+            item_pat = re.compile(r"\{[^{}]*?\"type\"\s*:\s*\"[a-zA-Z_]+\"[^{}]*?\}")
+            for item_match in item_pat.finditer(raw_content):
+                try:
+                    obj = json.loads(item_match.group(0))
+                    if isinstance(obj, dict) and obj.get("type") in ACTION_TYPES:
+                        actions.append(obj)
+                except Exception:
+                    pass
+
+    if matched_span:
+        text = (text[:matched_span[0]] + text[matched_span[1]:]).strip()
+
     return text, actions
 
 
-ACTION_TYPES = {"task": "Задача", "part": "Часть проекта", "move": "Перенести задачу", "journal": "Запись в журнал",
-                "note": "Заметка на стол", "checklist": "Чек-лист на стол"}
+ACTION_TYPES = {
+    "task": "Задача",
+    "task_edit": "Изменить задачу",
+    "update_task": "Изменить задачу",
+    "move": "Перенести задачу",
+    "part": "Часть проекта",
+    "journal": "Запись в журнал",
+    "note": "Заметка на стол",
+    "checklist": "Чек-лист на стол",
+    "checklist_item": "Пункт чек-листа",
+    "comment": "Комментарий к задаче",
+    "task_comment": "Комментарий к задаче",
+    "code": "Код на стол",
+    "link": "Ссылка на стол",
+}
 
 
 def describe(action: dict) -> dict:
@@ -163,13 +220,34 @@ def describe(action: dict) -> dict:
             meta.append(who.name)
         if action.get("due"):
             meta.append("срок " + str(action["due"]))
-    if kind == "move":
+        if action.get("estimate"):
+            meta.append(f"{action['estimate']} ч")
+    elif kind in ("task_edit", "update_task", "move", "comment", "task_comment", "checklist_item"):
         task = db().get(M.Task, int(action["task_id"])) if str(action.get("task_id", "")).isdigit() else None
-        title = task.title if task else "задача"
-        meta.append("→ " + dict(M.TASK_COLUMNS).get(action.get("column"), "?"))
-    if kind == "checklist":
+        if task:
+            title = title or task.title
+            if not project:
+                p = db().get(M.Project, task.project_id)
+                if p:
+                    meta.append(p.title)
+        if kind == "move":
+            meta.append("→ " + dict(M.TASK_COLUMNS).get(action.get("column"), str(action.get("column", ""))))
+        elif kind in ("comment", "task_comment"):
+            title = f"К задаче «{task.title if task else action.get('task_id')}»"
+            meta.append(str(action.get("text", ""))[:80])
+        elif kind == "checklist_item":
+            title = f"В чек-лист: {action.get('text', '')}"
+    elif kind == "part":
+        title = action.get("title") or "Новая часть"
+    elif kind == "journal":
+        title = "Запись в журнал"
+        meta.append(str(action.get("text", ""))[:80])
+    elif kind == "checklist":
         meta.append(f"{len(action.get('items') or [])} пунктов")
-    return {"label": ACTION_TYPES.get(kind, kind), "title": str(title)[:200], "meta": " · ".join(meta),
+    elif kind == "link":
+        meta.append(str(action.get("url", "")))
+
+    return {"type": kind, "label": ACTION_TYPES.get(kind, kind), "title": str(title)[:200], "meta": " · ".join(meta),
             "applied": bool(action.get("applied")), "error": action.get("error", "")}
 
 
@@ -204,12 +282,40 @@ def apply(action: dict) -> dict:
             task.estimate = max(0, float(action.get("estimate") or 0))
         except (ValueError, TypeError):
             task.due = None
+        if action.get("checklist") and isinstance(action["checklist"], list):
+            task.checklist = [{"text": str(i)[:300], "done": False} for i in action["checklist"] if str(i).strip()]
         db().add(task)
         db().commit()
         if task.assignee_id:
             notify(task.assignee_id, f"Новая задача: {task.title}", f"Проект «{project.title}».",
                    f"/p/{project.id}?task={task.id}#tasks", kind="task")
         return {"text": "Задача создана", "link": f"/p/{project.id}?task={task.id}#tasks"}
+    if kind in ("task_edit", "update_task"):
+        task = db().get(M.Task, int(action["task_id"])) if str(action.get("task_id", "")).isdigit() else None
+        project = db().get(M.Project, task.project_id) if task else None
+        if not task or not is_team(g.me, project):
+            raise ValueError("Задача недоступна")
+        if action.get("title"):
+            task.title = str(action["title"])[:300]
+        if "about" in action:
+            task.about = str(action["about"])[:5000]
+        if "estimate" in action and str(action["estimate"]).replace(".", "", 1).isdigit():
+            task.estimate = max(0, float(action["estimate"]))
+        if "priority" in action and str(action["priority"]).isdigit():
+            task.priority = max(1, min(3, int(action["priority"])))
+        if "due" in action:
+            try:
+                task.due = date.fromisoformat(str(action["due"])) if action["due"] else None
+            except ValueError:
+                pass
+        if "assignee_id" in action:
+            who = str(action["assignee_id"])
+            if who in team_ids(project.id) or who == project.lead_id or not who:
+                task.assignee_id = who or None
+        if "column" in action and action["column"] in dict(M.TASK_COLUMNS):
+            set_column(task, action["column"], project)
+        db().commit()
+        return {"text": "Задача обновлена", "link": f"/p/{project.id}?task={task.id}#tasks"}
     if kind == "part":
         project = _project_for(action, edit=True)
         position = len(db().scalars(select(M.Part).where(M.Part.project_id == project.id)).all()) + 1
@@ -225,6 +331,31 @@ def apply(action: dict) -> dict:
         set_column(task, action["column"], project)
         db().commit()
         return {"text": "Задача перенесена", "link": f"/p/{project.id}?task={task.id}#tasks"}
+    if kind in ("comment", "task_comment"):
+        task = db().get(M.Task, int(action["task_id"])) if str(action.get("task_id", "")).isdigit() else None
+        project = db().get(M.Project, task.project_id) if task else None
+        if not task or not is_team(g.me, project):
+            raise ValueError("Задача недоступна")
+        text = str(action.get("text") or "").strip()[:4000]
+        if not text:
+            raise ValueError("Пустой комментарий")
+        cmt = M.TaskComment(task_id=task.id, author_id=g.me.id, text=text)
+        db().add(cmt)
+        db().commit()
+        return {"text": "Комментарий добавлен", "link": f"/p/{project.id}?task={task.id}#tasks"}
+    if kind == "checklist_item":
+        task = db().get(M.Task, int(action["task_id"])) if str(action.get("task_id", "")).isdigit() else None
+        project = db().get(M.Project, task.project_id) if task else None
+        if not task or not is_team(g.me, project):
+            raise ValueError("Задача недоступна")
+        text = str(action.get("text") or "").strip()[:300]
+        if not text:
+            raise ValueError("Пустой пункт")
+        items = list(task.checklist or [])
+        items.append({"text": text, "done": bool(action.get("done"))})
+        task.checklist = items
+        db().commit()
+        return {"text": "Пункт добавлен", "link": f"/p/{project.id}?task={task.id}#tasks"}
     if kind == "journal":
         project = _project_for(action)
         text = str(action.get("text") or "").strip()[:4000]
@@ -233,11 +364,13 @@ def apply(action: dict) -> dict:
         db().add(M.Update(project_id=project.id, author_id=g.me.id, text=text))
         db().commit()
         return {"text": "Запись в журнале", "link": f"/p/{project.id}#journal"}
-    if kind in ("note", "checklist"):
-        item = M.DeskItem(member_id=g.me.id, kind=kind, title=str(action.get("title") or "")[:200],
-                          body=str(action.get("body") or "")[:200000])
+    if kind in ("note", "checklist", "code", "link"):
+        item = M.DeskItem(member_id=g.me.id, kind=kind if kind in ("note", "checklist", "code", "link") else "note",
+                          title=str(action.get("title") or "")[:200], body=str(action.get("body") or "")[:200000])
         if kind == "checklist":
             item.data = {"items": [{"text": str(t)[:300], "done": False} for t in (action.get("items") or [])][:200]}
+        elif kind == "link" and action.get("url"):
+            item.data = {"url": str(action["url"])[:1000]}
         if str(action.get("project_id") or "").isdigit():
             try:
                 item.project_id = _project_for(action).id
@@ -256,6 +389,13 @@ def _thread(raw: str) -> str:
         project = db().get(M.Project, int(raw[1:]))
         if project and is_team(g.me, project):
             return raw
+    if raw.startswith("c_"):
+        chat = db().get(M.AiChat, raw)
+        if not chat:
+            chat = M.AiChat(id=raw, member_id=g.me.id, title="Новый чат")
+            db().add(chat)
+            db().commit()
+        return raw
     return "me"
 
 
@@ -273,17 +413,87 @@ def _message_json(m) -> dict:
 @app.route("/ai")
 @need("ai.use")
 def ai_page():
-    thread = _thread(request.args.get("thread") or ("p" + request.args["project"] if request.args.get("project") else "me"))
+    thread = _thread(request.args.get("chat") or request.args.get("thread") or ("p" + request.args["project"] if request.args.get("project") else "me"))
     projects = [p for p in visible_projects(g.me) if is_team(g.me, p)]
-    return render_template("ai.html", thread=thread, projects=projects, ready=ai.allowed(db(), g.me),
+    chats = db().scalars(select(M.AiChat).where(M.AiChat.member_id == g.me.id).order_by(M.AiChat.updated_at.desc())).all()
+    current_title = "Личный разговор"
+    if thread.startswith("c_"):
+        c_obj = db().get(M.AiChat, thread)
+        if c_obj:
+            current_title = c_obj.title
+    elif thread.startswith("p"):
+        p_obj = db().get(M.Project, int(thread[1:])) if thread[1:].isdigit() else None
+        if p_obj:
+            current_title = "Проект «" + p_obj.title + "»"
+    return render_template("ai.html", thread=thread, chats=chats, projects=projects,
+                           current_title=current_title, ready=ai.allowed(db(), g.me),
                            left=ai.left_today(db(), g.me.id), ask=request.args.get("ask", ""))
+
+
+@app.get("/api/ai/chats")
+@need("ai.use")
+def ai_chats():
+    chats = db().scalars(select(M.AiChat).where(M.AiChat.member_id == g.me.id).order_by(M.AiChat.updated_at.desc())).all()
+    projects = [p for p in visible_projects(g.me) if is_team(g.me, p)]
+    return {
+        "chats": [{"id": c.id, "title": c.title, "updated_at": c.updated_at.strftime("%d.%m %H:%M")} for c in chats],
+        "projects": [{"id": f"p{p.id}", "title": p.title, "project_id": p.id} for p in projects],
+    }
+
+
+@app.post("/api/ai/chats")
+@need("ai.use")
+def ai_chat_create():
+    import secrets
+    chat_id = "c_" + secrets.token_hex(6)
+    data = request.get_json(silent=True) or {}
+    title = str(data.get("title") or "Новый чат").strip()[:100]
+    chat = M.AiChat(id=chat_id, member_id=g.me.id, title=title)
+    db().add(chat)
+    db().commit()
+    return {"id": chat_id, "title": title}
+
+
+@app.post("/api/ai/chats/<chat_id>/delete")
+@need("ai.use")
+def ai_chat_delete(chat_id):
+    chat = db().get(M.AiChat, chat_id)
+    if chat and chat.member_id == g.me.id:
+        db().delete(chat)
+    for m in db().scalars(select(M.AiMessage).where(M.AiMessage.member_id == g.me.id, M.AiMessage.thread == chat_id)):
+        db().delete(m)
+    db().commit()
+    return {"ok": True}
+
+
+@app.post("/api/ai/chats/<chat_id>/rename")
+@need("ai.use")
+def ai_chat_rename(chat_id):
+    data = request.get_json(silent=True) or {}
+    title = str(data.get("title") or "").strip()[:100]
+    if not title:
+        return {"error": "Название не может быть пустым"}, 400
+    chat = db().get(M.AiChat, chat_id)
+    if chat and chat.member_id == g.me.id:
+        chat.title = title
+        db().commit()
+    return {"ok": True, "title": title}
 
 
 @app.get("/api/ai/history")
 @need("ai.use")
 def ai_history():
-    thread = _thread(request.args.get("thread"))
-    return {"thread": thread, "messages": [_message_json(m) for m in _history(thread)],
+    thread = _thread(request.args.get("chat") or request.args.get("thread"))
+    title = "Личный разговор"
+    if thread.startswith("c_"):
+        chat = db().get(M.AiChat, thread)
+        if chat:
+            title = chat.title
+    elif thread.startswith("p"):
+        p = db().get(M.Project, int(thread[1:])) if thread[1:].isdigit() else None
+        if p:
+            title = p.title
+    return {"thread": thread, "title": title, "messages": [_message_json(m) for m in _history(thread)],
             "ready": ai.allowed(db(), g.me), "left": ai.left_today(db(), g.me.id)}
 
 
@@ -314,6 +524,17 @@ def ai_chat():
     if ai.left_today(db(), g.me.id) <= 0:
         return {"error": "На сегодня запросы к ИИ закончились — лимит задаёт руководитель"}, 429
     thread = _thread(data.get("thread"))
+    if thread.startswith("c_"):
+        chat = db().get(M.AiChat, thread)
+        if chat and chat.title == "Новый чат":
+            first_line = text.split("\n")[0].strip()
+            chat.title = first_line[:45] + ("…" if len(first_line) > 45 else "")
+            chat.updated_at = datetime.now()
+            db().commit()
+        elif chat:
+            chat.updated_at = datetime.now()
+            db().commit()
+
     project_id = int(thread[1:]) if thread.startswith("p") else (int(data["project_id"]) if str(data.get("project_id") or "").isdigit() else None)
     item_id = int(data["item_id"]) if str(data.get("item_id") or "").isdigit() else None
     messages = [{"role": "system", "content": context(g.me, project_id, item_id)}]
@@ -336,12 +557,21 @@ def ai_chat():
         except ai.AiError as error:
             yield _sse({"error": str(error)})
             return
-        reply, actions = split_actions("".join(parts))
-        msg = M.AiMessage(member_id=g.me.id, thread=thread, role="assistant", content=reply, actions=actions)
-        db().add(msg)
-        db().commit()
-        ai.count(db(), g.me.id, tokens)
-        yield _sse({"done": True, "message": _message_json(msg)})
+        except Exception as error:
+            yield _sse({"error": f"Ошибка связи с моделью: {str(error)}"})
+            return
+
+        full_text = "".join(parts)
+        reply, actions = split_actions(full_text)
+        try:
+            msg = M.AiMessage(member_id=g.me.id, thread=thread, role="assistant", content=reply, actions=actions)
+            db().add(msg)
+            db().commit()
+            ai.count(db(), g.me.id, tokens)
+            yield _sse({"done": True, "message": _message_json(msg)})
+        except Exception as error:
+            db().rollback()
+            yield _sse({"error": f"Не удалось сохранить ответ: {str(error)}"})
 
     response = Response(stream_with_context(generate()), mimetype="text/event-stream")
     response.headers["Cache-Control"] = "no-cache"
