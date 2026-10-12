@@ -19,7 +19,7 @@ from flask import abort, g, render_template, request, send_file
 from sqlalchemy import func, select
 
 import models as M
-from app import STAFF, app, db, is_team, need, project_or_404, visible_projects
+from app import app, db, is_team, need, project_or_404, visible_projects
 
 FILES = os.path.join(M.DATA_DIR, "desk")
 MAX_FILE = 25 * 1024 * 1024
@@ -70,7 +70,7 @@ def _project_ok(pid) -> int:
 
 
 @app.route("/desk")
-@need(*STAFF)
+@need("workshop.use")
 def desk():
     items = db().scalars(select(M.DeskItem).where(M.DeskItem.member_id == g.me.id)
                          .order_by(M.DeskItem.pinned.desc(), M.DeskItem.updated_at.desc())).all()
@@ -92,7 +92,7 @@ def desk():
 
 
 @app.post("/api/desk")
-@need(*STAFF)
+@need("workshop.use")
 def desk_create():
     data = request.get_json(silent=True) or {}
     kind = data.get("kind") if data.get("kind") in M.DESK_KINDS and data.get("kind") != "file" else "note"
@@ -112,7 +112,7 @@ def desk_create():
 
 
 @app.get("/api/desk/<int:item_id>")
-@need(*STAFF)
+@need("workshop.use")
 def desk_get(item_id):
     item = db().get(M.DeskItem, item_id)
     if not item or not _can_read(item):
@@ -121,7 +121,7 @@ def desk_get(item_id):
 
 
 @app.post("/api/desk/<int:item_id>")
-@need(*STAFF)
+@need("workshop.use")
 def desk_update(item_id):
     """Автосохранение редактора: приходят только изменённые поля."""
     item = _own(item_id)
@@ -156,7 +156,7 @@ def desk_update(item_id):
 
 
 @app.post("/api/desk/<int:item_id>/delete")
-@need(*STAFF)
+@need("workshop.use")
 def desk_delete(item_id):
     item = _own(item_id)
     path = (item.data or {}).get("path")
@@ -171,7 +171,7 @@ def desk_delete(item_id):
 
 
 @app.post("/api/desk/<int:item_id>/copy")
-@need(*STAFF)
+@need("workshop.use")
 def desk_copy(item_id):
     """Взять наработку коллеги к себе на стол (файл — ссылкой на тот же файл не копируем)."""
     item = db().get(M.DeskItem, item_id)
@@ -190,7 +190,7 @@ def _safe_name(name: str) -> str:
 
 
 @app.post("/api/desk/upload")
-@need(*STAFF)
+@need("workshop.use")
 def desk_upload():
     upload = request.files.get("file")
     if not upload or not upload.filename:
@@ -215,7 +215,7 @@ def desk_upload():
 
 
 @app.get("/desk/file/<int:item_id>")
-@need(*STAFF)
+@need("workshop.use")
 def desk_file(item_id):
     item = db().get(M.DeskItem, item_id)
     if not item or item.kind != "file" or not _can_read(item):

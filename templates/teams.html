@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials, dir_icon %}
+{% block title %}Команды — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Лаборатория · {{ rows|length }}</span>
+    <h1>Команды</h1>
+    <p class="sub">Безопасность, разработка, нейросети — и любые новые: у каждой команды свои люди, лид и проекты.</p>
+  </div>
+  {% if can('teams.manage') %}<div class="actions"><button class="btn btn-primary" type="button" data-sheet-open="team-new">{{ icon('plus', 16) }}Новая команда</button></div>{% endif %}
+</div>
+
+<div class="grid g3 team-grid">
+  {% for d in rows %}{% set i = info[d.id] %}
+  <article class="panel team-card">
+    <a class="team-link" href="/d/{{ d.slug }}" aria-label="{{ d.title }}"></a>
+    <div class="row" style="gap: 12px">
+      <span class="badge t-{{ d.tone }}">{{ dir_icon(d, 22) }}</span>
+      <div class="grow stack-xs" style="gap: 1px; min-width: 0"><h3 class="truncate">{{ d.title }}</h3>
+        <span class="tiny faint">{% if i.lead %}лид — {{ i.lead.name }}{% else %}лид не назначен{% endif %}</span></div>
+      {% if can('teams.manage') %}
+      <form method="post" class="team-menu">
+        <button class="icon-btn" type="submit" name="delete" value="{{ d.id }}" title="Удалить команду" aria-label="Удалить команду {{ d.title }}"
+                data-confirm="Удалить команду «{{ d.title }}»? Люди и проекты останутся, но без команды.">{{ icon('trash', 16) }}</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if d.about %}<p class="small muted team-about">{{ d.about }}</p>{% endif %}
+    <div class="team-foot">
+      <span class="avatars">{% for m in i.people[:5] %}<span class="avatar sm" title="{{ m.name }}">{{ initials(m.name) }}</span>{% endfor %}</span>
+      <span class="tiny faint spacer">{{ i.people|length }} чел. · {{ i.active }} в работе из {{ i.projects|length }}</span>
+    </div>
+  </article>
+  {% else %}
+  <div class="panel empty" style="grid-column: 1 / -1">Команд пока нет.</div>
+  {% endfor %}
+</div>
+
+{% if can('teams.manage') %}
+<dialog class="sheet" id="team-new" aria-labelledby="tn-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><h3 id="tn-title">Новая команда</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" class="sheet-body stack-sm" id="team-form" style="gap: 14px">
+    <label class="field"><span class="label">Название</span><input class="input" name="title" required maxlength="120" placeholder="Например, DevOps"></label>
+    <label class="field"><span class="label">Чем занимается</span><textarea class="textarea" name="about" rows="2" maxlength="2000" placeholder="Пара предложений для своих и для лендинга"></textarea></label>
+    <div class="field"><span class="label">Значок</span>
+      <div class="icon-pick">{% for ic in icons %}<label><input type="radio" name="icon" value="{{ ic }}" {{ 'checked' if loop.first }}><span>{{ icon(ic, 18) }}</span></label>{% endfor %}</div></div>
+    <div class="field"><span class="label">Цвет</span>
+      <div class="row" style="gap: 8px">{% for t in tones %}<label class="tone-pick"><input type="radio" name="tone" value="{{ t }}" {{ 'checked' if loop.first }}><span class="tag-dot tone-{{ t }}"></span></label>{% endfor %}</div></div>
+  </form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="team-form">{{ icon('plus', 15) }}Создать</button></div>
+</dialog>
+{% endif %}
+{% endblock %}

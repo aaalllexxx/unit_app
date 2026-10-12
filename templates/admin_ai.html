@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}ИИ лаборатории — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Управление</span>
+    <h1>ИИ лаборатории</h1>
+    <p class="sub">Агрегатор, основная модель агента и его команда. Кому доступен ИИ и сколько можно тратить — в «Доступах» (право «Пользоваться ИИ-агентом» и лимиты тегов).</p>
+  </div>
+  {% if ready %}<span class="chip tone s-active"><span class="dot"></span>включён</span>{% else %}<span class="chip">не настроен</span>{% endif %}
+</div>
+
+<form method="post" action="/admin/ai" class="grid split">
+  <div class="panel">
+    <div class="panel-head"><h3>Подключение</h3></div>
+    <div class="panel-body stack-sm" style="gap: 14px">
+      <p class="small muted">Любой сервис с протоколом OpenAI. Цены моделей берутся у агрегатора автоматически, по ним считаются лимиты. Ключ хранится в базе портала и наружу не отдаётся.</p>
+      <label class="field"><span class="label">Адрес API</span><input class="input mono" name="base_url" value="{{ cfg.base_url }}" placeholder="https://api.claudehub.fun/v1" inputmode="url"></label>
+      <label class="field"><span class="label">Ключ API</span><input class="input mono" name="api_key" type="password" autocomplete="off" placeholder="{{ cfg.masked or 'sk-…' }}">
+        <span class="hint">{% if cfg.key_set %}Ключ сохранён ({{ cfg.masked }}). Пустое поле — оставить прежний.{% else %}Для локальных моделей можно без ключа.{% endif %}</span></label>
+      <div class="fgrid">
+        <label class="field"><span class="label">Основная модель агента</span><input class="input mono" name="model" value="{{ cfg.model }}" placeholder="claude-opus-4.7"></label>
+        <label class="field"><span class="label">Команда агента</span><input class="input mono" name="fast_model" value="{{ cfg.fast_model }}" placeholder="deepseek-v4-flash, deepseek-v4-pro">
+          <span class="hint">Быстрые модели через запятую: им основная поручает поиск и черновики, а потом проверяет.</span></label>
+      </div>
+      <label class="field"><span class="label">Указания агенту</span><textarea class="textarea" name="prompt" data-autosize rows="3" placeholder="Например: оценки задач — в часах, не больше 8 ч на задачу; отчёты — коротко, списком.">{{ cfg.prompt }}</textarea></label>
+    </div>
+    <div class="panel-foot row-wrap" style="gap: 8px">
+      <button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button>
+      <button class="btn btn-ghost" type="submit" name="test" value="1">{{ icon('spark', 15) }}Сохранить и проверить</button>
+      {% if cfg.key_set %}<button class="btn btn-danger btn-sm spacer" type="submit" name="forget" value="1" data-confirm="Удалить ключ API?">Удалить ключ</button>{% endif %}
+    </div>
+  </div>
+  <div class="panel panel-pad stack-sm">
+    <h3>Как устроен агент</h3>
+    <p class="small muted">Основная модель понимает задачу, раздаёт быстрым моделям поиск по проектам и черновики, сверяет их ответы с данными портала и только потом отвечает или действует. Так дешевле и быстрее, а точность — от основной модели.</p>
+    <p class="small muted">Агент действует с правами человека, который его спрашивает: видит и меняет только то, что разрешено ему самому.</p>
+  </div>
+</form>
+{% endblock %}

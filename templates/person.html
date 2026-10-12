@@ -8,11 +8,11 @@
   <span class="avatar lg">{{ initials(m.name) }}</span>
   <div class="who">
     <h1>{{ m.name }}</h1>
-    <span class="muted">{{ m.position or roles[m.role] }}{% if m.grade %} · {{ m.grade }}{% endif %}</span>
+    <span class="muted">{{ m.position or 'Сотрудник' }}{% if m.grade %} · {{ m.grade }}{% endif %}</span>
     <div class="row-wrap" style="gap: 6px; margin-top: 2px">
       {% for d in dirs if d.id == m.direction_id %}<a href="/d/{{ d.slug }}" class="chip tone t-{{ d.tone }}">{{ d.title }}</a>{% endfor %}
       {% for t in teams if t.id == m.team_id %}<span class="chip">{{ t.title }}</span>{% endfor %}
-      {% for r in member_roles %}<span class="chip tone s-idea">{{ role_short[r] }}</span>{% endfor %}
+      {% for t in m.tags or [] %}{% if t in tag_rules %}<span class="chip tone s-idea">{{ tag_rules[t].title }}</span>{% endif %}{% endfor %}
     </div>
   </div>
   <div class="mini-stats">
@@ -105,13 +105,10 @@
       <span class="label-mono">Для руководителя</span>
       <div class="fgrid three">
         <label class="field"><span class="label">Грейд</span><select class="select" name="grade"><option value="">—</option>{% for g in grades %}<option {{ 'selected' if g == m.grade }}>{{ g }}</option>{% endfor %}</select></label>
-        <label class="field"><span class="label">Направление</span><select class="select" name="direction_id"><option value="">—</option>{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == m.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Команда</span><select class="select" name="direction_id"><option value="">—</option>{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == m.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
         <label class="field"><span class="label">Группа</span><select class="select" name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if t.id == m.team_id }}>{{ t.title }}</option>{% endfor %}</select></label>
       </div>
-      {% if not own %}
-      <div class="field"><span class="label">Роли — можно несколько, человек переключается между ними</span>
-        <div class="tag-pick">{% for k, v in roles.items() if k != 'pending' %}<label class="tag-toggle"><input type="checkbox" name="roles" value="{{ k }}" {{ 'checked' if k in member_roles }}><span>{{ v }}</span></label>{% endfor %}</div></div>
-      {% endif %}
+      {% if can('page.admin') %}<a class="disclose" href="/access/person/{{ m.id }}">{{ icon('key', 13) }}Теги, права и лимиты — в «Доступах»</a>{% endif %}
     </div>
     {% endif %}
   </form>

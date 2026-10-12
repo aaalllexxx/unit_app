@@ -60,7 +60,7 @@
   </defs>
 </svg>
 {% endmacro %}
-{% macro dir_icon(d, size=20) %}{{ icon('shield' if d.slug == 'security' else 'cpu' if d.slug == 'ml' else 'code', size) }}{% endmacro %}
+{% macro dir_icon(d, size=20) %}{{ icon(d.icon or {'security': 'shield', 'ml': 'cpu', 'dev': 'code'}.get(d.slug, 'layers'), size) }}{% endmacro %}
 {% macro initials(name) %}{% set p = (name or '?').split() %}{{ p[0][0] }}{{ p[1][0] if p|length > 1 else '' }}{% endmacro %}
 {% macro progress(pct) %}<div class="progress" role="progressbar" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100"><i style="width: {{ pct }}%"></i></div>{% endmacro %}
 {% macro phases(rows) %}{% set short = {'Планирование': 'План', 'Тестирование': 'Тесты'} %}
@@ -70,7 +70,6 @@
 {% endfor %}</div>
 {% endmacro %}
 {% macro flashes() %}{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flashes">{% for c, m in messages %}<div class="flash {{ c }}">{{ m }}</div>{% endfor %}</div>{% endif %}{% endwith %}{% endmacro %}
-{% macro dir_short(d) %}{{ {'security': 'Безопасность', 'dev': 'Разработка ПО', 'ml': 'Нейросети'}.get(d.slug, d.title) }}{% endmacro %}
 {% macro kind_icon(kind, size=16) %}{{ icon({'note': 'note', 'checklist': 'checklist', 'link': 'link', 'file': 'file', 'code': 'code'}.get(kind, 'note'), size) }}{% endmacro %}
 {% macro signal(s) %}<a class="signal {{ s.level }}" href="{{ s.link }}"><span class="sig-ic">{{ icon(s.icon, 16) }}</span><span class="grow"><b>{{ s.text }}</b>{% if s.project %}<span>{{ s.project }}</span>{% endif %}</span>{{ icon('arrow', 14) }}</a>{% endmacro %}
 {% macro logo(sub) %}<span class="mark" aria-hidden="true"></span><span class="word"><b>UNIT</b><small>{{ sub }}</small></span>{% endmacro %}

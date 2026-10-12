@@ -15,8 +15,9 @@ from app import app  # noqa: E402
 
 def _seed():
     s = M.Session()
-    s.add_all([M.Member(id="h", name="Руководитель Лаборатории", role="head", direction_id=2),
-               M.Member(id="c", name="ООО Заказчик", role="customer")])
+    s.add_all([M.Member(id="h", name="Руководитель Лаборатории", role="head", direction_id=2,
+                        tags=["руководитель лаборатории"]),
+               M.Member(id="c", name="ООО Заказчик", role="customer", tags=["заказчик"])])
     s.flush()
     p = M.Project(title="Портал", summary="Тест", direction_id=2, lead_id="h", public=True, due=date.today() + timedelta(days=9))
     s.add(p)

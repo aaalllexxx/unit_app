@@ -47,6 +47,8 @@ class Direction(Base):
     about: Mapped[str] = mapped_column(Text, default="")
     tone: Mapped[str] = mapped_column(String(20), default="blue")
     lead_id: Mapped[Optional[str]] = mapped_column(String(40), default=None)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    icon: Mapped[str] = mapped_column(String(24), default="")             # значок; пусто — по slug
 
 
 class Team(Base):
@@ -77,6 +79,8 @@ class Member(Base):
     # Все выданные роли; role — основная. Человек с несколькими ролями переключается между ними
     roles: Mapped[list] = mapped_column(JSON, default=list)
     prefs: Mapped[dict] = mapped_column(JSON, default=dict)               # вибрация, вид канбана…
+    # Теги аккаунта UNIT (из UNIT ID и из «Доступов»); по ним считаются права — см. access.py
+    tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
 
     def all_roles(self) -> list:
         granted = [r for r in (self.roles or []) if r in ROLES and r != "pending"]
@@ -279,10 +283,45 @@ class AiUsage(Base):
     tokens: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class TagRule(Base):
+    """Правило тега: какие разделы и действия открыты, какие лимиты. is_view — тег-«кабинет»."""
+    __tablename__ = "tag_rules"
+    tag: Mapped[str] = mapped_column(String(60), primary_key=True)
+    title: Mapped[str] = mapped_column(String(120), default="")
+    is_view: Mapped[bool] = mapped_column(Boolean, default=False)
+    privileges: Mapped[list] = mapped_column(JSON, default=list)
+    limits: Mapped[dict] = mapped_column(JSON, default=dict)
+    tone: Mapped[str] = mapped_column(String(20), default="blue")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MemberAccess(Base):
+    """Личные исключения: разрешить или запретить сверх тегов, свои лимиты."""
+    __tablename__ = "member_access"
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), primary_key=True)
+    allow: Mapped[list] = mapped_column(JSON, default=list)
+    deny: Mapped[list] = mapped_column(JSON, default=list)
+    limits: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class AiSpend(Base):
+    """Расход на ИИ: по человеку, дню и модели — в токенах и долларах (по ценам агрегатора)."""
+    __tablename__ = "ai_spend"
+    __table_args__ = (UniqueConstraint("member_id", "day", "model"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    model: Mapped[str] = mapped_column(String(80), default="")
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost: Mapped[float] = mapped_column(Float, default=0.0)
+
+
 def _migrate() -> None:
     """Новые столбцы в таблицах прошлых версий (create_all их не добавляет)."""
     added = {
-        "members": [("roles", "JSON DEFAULT '[]'"), ("prefs", "JSON DEFAULT '{}'")],
+        "members": [("roles", "JSON DEFAULT '[]'"), ("prefs", "JSON DEFAULT '{}'"), ("tags", "JSON")],
+        "directions": [("position", "INTEGER DEFAULT 0"), ("icon", "VARCHAR(24) DEFAULT ''")],
         "tasks": [("checklist", "JSON DEFAULT '[]'"), ("moved_at", "DATETIME"), ("priority", "INTEGER DEFAULT 2")],
     }
     with ENGINE.begin() as con:
@@ -307,3 +346,5 @@ def init() -> None:
                           about="Модели, датасеты, исследования и внедрение ИИ в продукты."),
             ])
             s.commit()
+        import access
+        access.ensure_defaults(s)

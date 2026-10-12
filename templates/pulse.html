@@ -6,7 +6,7 @@
   <div class="titles">
     <span class="eyebrow">Контроль выполнения</span>
     <h1>Пульс</h1>
-    <p class="sub">{% if me.role == 'head' %}Вся лаборатория{% elif me.role == 'lead' %}Ваше направление и проекты{% else %}Ваши проекты{% endif %}: что горит, как идут сроки, кто перегружен и что мешает.</p>
+    <p class="sub">{% if can('project.see_all') %}Вся лаборатория{% elif can('project.see_team') %}Ваша команда и проекты{% else %}Ваши проекты{% endif %}: что горит, как идут сроки, кто перегружен и что мешает.</p>
   </div>
 </div>
 

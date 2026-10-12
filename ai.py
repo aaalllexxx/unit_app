@@ -84,8 +84,10 @@ def configured(s) -> bool:
     return bool(_get(s, KEYS["base_url"]) and _get(s, KEYS["model"]))
 
 
-def allowed(s, role: str) -> bool:
-    return configured(s) and role in settings(s)["roles"]
+def allowed(s, member) -> bool:
+    """ИИ включён и человеку можно им пользоваться (право ai.use)."""
+    import access
+    return configured(s) and access.can(member, "ai.use")
 
 
 def used_today(s, member_id: str) -> int:

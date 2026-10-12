@@ -1159,3 +1159,67 @@ a.swipe-promo { color: inherit; }
     .link-pair { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
 }
 @media (max-width: 900px) { .shell { align-content: start; } }
+
+/* ── Доступы: права, тройной переключатель, кольца лимитов ──────────────── */
+.t-teal { --tone: var(--accent-2); }
+.t-amber { --tone: var(--warn); }
+.tag-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--tone, var(--blue)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone, var(--blue)) 18%, transparent); }
+.tone-blue { --tone: var(--blue); } .tone-violet { --tone: var(--violet); } .tone-crimson { --tone: var(--crimson); }
+.tone-teal { --tone: var(--accent-2); } .tone-amber { --tone: var(--warn); }
+.tone-pick { cursor: pointer; padding: 6px; border-radius: 10px; border: 1px solid transparent; }
+.tone-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.tone-pick:has(input:checked) { border-color: var(--line-strong); background: var(--surface); }
+.icon-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.icon-pick label { cursor: pointer; }
+.icon-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.icon-pick span { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; color: var(--ink-2); border: 1px solid var(--line-strong); background: var(--surface); transition: all .15s; }
+.icon-pick input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
+.choice.on { border-color: var(--accent); background: var(--accent-soft); }
+button.choice { width: 100%; font: inherit; color: inherit; background: var(--surface); text-align: left; }
+.count-badge.bad { background: var(--danger); color: #fff; }
+.tag-bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }
+.tag-btn { border: 1px dashed var(--line-strong); background: var(--surface); cursor: pointer; gap: 4px; }
+.tag-chip .tag { padding-right: 4px; gap: 4px; }
+.tag-chip button { border: 0; background: none; color: inherit; opacity: .6; cursor: pointer; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; padding: 0; }
+.tag-chip button:hover { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); }
+.access-row .person-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.perm-group { padding: 14px 22px 6px; border-top: 1px solid var(--line); }
+.perm-group:first-of-type { border-top: 0; }
+.perm-group > .label-mono { display: block; margin-bottom: 4px; }
+.perm-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px dashed var(--line); }
+.perm-group > .label-mono + .perm-row { border-top: 0; }
+.perm-row .grow > b { display: block; font-size: 14px; font-weight: 500; }
+.perm-row .grow > span { display: block; font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+.perm-state { width: 22px; height: 22px; flex: none; border-radius: 7px; display: grid; place-items: center; color: var(--ink-3); background: var(--sunken); }
+.perm-state.on { color: #fff; background: var(--ok); }
+.tri { display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--sunken); flex: none; }
+.tri label { cursor: pointer; }
+.tri input { position: absolute; opacity: 0; pointer-events: none; }
+.tri span { display: block; padding: 4px 9px; border-radius: 8px; font-size: 12px; font-weight: 500; color: var(--ink-3); transition: all .15s; }
+.tri input:checked + span { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(15, 18, 34, .1); }
+.tri label:nth-child(2) input:checked + span { color: var(--ok); }
+.tri label:nth-child(3) input:checked + span { color: var(--danger); }
+.tri input:focus-visible + span { outline: 2px solid var(--accent); }
+.sticky-foot { position: sticky; bottom: 0; z-index: 2; }
+@media (max-width: 900px) { .sticky-foot { bottom: calc(64px + env(safe-area-inset-bottom)); } }
+
+/* Кольца — заполненные «бублики» расхода (как загрузка) */
+.rings { display: flex; gap: 14px; flex-wrap: wrap; }
+.ring { --p: 0; --c: var(--accent); position: relative; width: 112px; aspect-ratio: 1; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: conic-gradient(from -90deg, var(--c) calc(var(--p) * 1%), var(--sunken) 0); }
+.ring::before { content: ''; position: absolute; inset: 10px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 1px 3px rgba(15, 18, 34, .06); }
+.ring > * { position: relative; }
+.ring b { font: 600 18px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.ring span { font-size: 11px; color: var(--ink-3); line-height: 1.25; max-width: 76px; margin-top: 2px; }
+.ring.warn { --c: var(--warn); } .ring.full { --c: var(--danger); }
+.rings.sm .ring { width: 96px; } .rings.sm .ring b { font-size: 15px; }
+
+/* Команды */
+.team-card { position: relative; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.team-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow); transform: translateY(-1px); }
+.team-link { position: absolute; inset: 0; border-radius: inherit; z-index: 0; }
+.team-card > * { position: relative; z-index: 1; pointer-events: none; }
+.team-card .team-menu, .team-card .team-menu * { pointer-events: auto; }
+.team-card h3 { font-size: 17px; }
+.team-about { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.team-foot { display: flex; align-items: center; gap: 10px; margin-top: auto; }

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials %}
+{% block title %}Доступы — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Управление</span>
+    <h1>Доступы</h1>
+    <p class="sub">Кто что видит и может. Права выдаются тегам, а человеку — личные исключения. Теги общие для всех сервисов UNIT.</p>
+  </div>
+</div>
+
+<div class="seg-tabs" role="tablist">
+  <a class="tab-btn {{ 'on' if tab == 'people' }}" href="/access?tab=people">{{ icon('users', 15) }}Люди{% set waiting = rows|selectattr('pending')|list|length %}{% if waiting %}<span class="count-badge bad">{{ waiting }}</span>{% endif %}</a>
+  <a class="tab-btn {{ 'on' if tab == 'tags' }}" href="/access?tab=tags">{{ icon('key', 15) }}Теги и права</a>
+</div>
+
+{% if tab == 'people' %}
+<div class="searchbar" style="margin-bottom: 14px">{{ icon('search', 17) }}<input class="input" type="search" placeholder="Имя, почта или тег" data-filter-input="[data-person]" aria-label="Поиск"></div>
+<div class="panel rows">
+  {% for row in rows %}{% set m = row.m %}
+  <a class="r access-row" href="/access/person/{{ m.id }}" data-person data-text="{{ (m.name ~ ' ' ~ m.email ~ ' ' ~ (m.tags or [])|join(' '))|lower }}">
+    <span class="avatar">{{ initials(m.name) }}</span>
+    <span class="grow stack-xs" style="gap: 3px; min-width: 0">
+      <b class="small strong truncate">{{ m.name }}{% if m.id == me.id %} · вы{% endif %}</b>
+      <span class="person-tags">
+        {% if row.pending %}<span class="tag tag-bad">ждёт доступа</span>{% endif %}
+        {% for t in m.tags or [] %}<span class="tag {{ 'tag-role' if t in row.views else 'tag-service' if t in used and rules|selectattr('tag', 'equalto', t)|list else '' }}">#{{ t }}</span>{% endfor %}
+      </span>
+    </span>
+    {% if row.limits.ai_day_usd %}<span class="hide-sm tiny mono faint" title="ИИ сегодня / лимит">${{ '%.2f' % row.spend.day }} / {{ '%g' % row.limits.ai_day_usd }}</span>{% endif %}
+    {{ icon('arrow', 16) }}
+  </a>
+  {% else %}<div class="empty">Пока никто не входил.</div>{% endfor %}
+</div>
+
+{% else %}
+<div class="grid split">
+  <section>
+    <div class="panel rows">
+      {% for r in rules %}
+      <a class="r" href="/access/tag/{{ r.tag }}">
+        <span class="tag-dot tone-{{ r.tone }}"></span>
+        <span class="grow stack-xs" style="gap: 2px; min-width: 0">
+          <b class="small strong">{{ r.title }}{% if r.is_view %} <span class="chip tone s-idea" style="height: 20px; font-size: 11px">кабинет</span>{% endif %}</b>
+          <span class="tiny faint">#{{ r.tag }} · {{ r.privileges|length }} прав · у {{ used.get(r.tag, 0) }} чел.{% if r.limits.ai_day_usd %} · ИИ ${{ '%g' % r.limits.ai_day_usd }}/день{% endif %}</span>
+        </span>
+        {{ icon('arrow', 16) }}
+      </a>
+      {% else %}<div class="empty">Правил пока нет.</div>{% endfor %}
+    </div>
+    {% if orphan %}
+    <p class="small muted" style="margin: 14px 0 8px">Теги у людей без правила — пока ничего не дают:</p>
+    <div class="row-wrap" style="gap: 6px">
+      {% for t in orphan %}<form method="post" action="/access/tag"><input type="hidden" name="tag" value="{{ t }}"><button class="tag tag-btn" type="submit" title="Создать правило">#{{ t }} {{ icon('plus', 12) }}</button></form>{% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  <form method="post" action="/access/tag" class="panel">
+    <div class="panel-head"><h3>Новый тег</h3></div>
+    <div class="panel-body stack-sm" style="gap: 14px">
+      <label class="field"><span class="label">Тег</span><input class="input" name="tag" required maxlength="60" placeholder="например, доступ к ии"></label>
+      <label class="field"><span class="label">Как называть</span><input class="input" name="title" maxlength="120" placeholder="Доступ к ИИ"></label>
+      <label class="field"><span class="label">Взять права у</span>
+        <select class="select" name="copy_from"><option value="">— начать с пустого —</option>{% for r in rules %}<option value="{{ r.tag }}">{{ r.title }}</option>{% endfor %}</select></label>
+      <p class="tiny faint">Например, «доступ к ИИ» — только раздел и право «Пользоваться ИИ-агентом» с лимитом, «доступ к мастерской» — мастерская и git.</p>
+    </div>
+    <div class="panel-foot"><button class="btn btn-primary" type="submit">{{ icon('plus', 15) }}Создать</button></div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

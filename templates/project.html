@@ -148,7 +148,7 @@
         {% for t in team %}{% set m = people.get(t.member_id) %}{% if m %}
         <div class="r">
           <a class="avatar" href="/people/{{ m.id }}">{{ initials(m.name) }}</a>
-          <div class="grow stack-xs" style="gap: 1px"><a class="small strong" href="/people/{{ m.id }}">{{ m.name }}</a><span class="tiny faint">{{ t.role or roles[m.role] }}{% if m.id == p.lead_id %} · руководитель проекта{% endif %}</span></div>
+          <div class="grow stack-xs" style="gap: 1px"><a class="small strong" href="/people/{{ m.id }}">{{ m.name }}</a><span class="tiny faint">{{ t.role or m.position or 'участник' }}{% if m.id == p.lead_id %} · руководитель проекта{% endif %}</span></div>
           {% if editable and m.id != p.lead_id %}<form method="post" action="/p/{{ p.id }}/team"><button class="icon-btn" name="remove" value="{{ m.id }}" type="submit" title="Убрать из команды" aria-label="Убрать из команды" data-confirm="Убрать {{ m.name }} из команды?">{{ icon('x', 15) }}</button></form>{% endif %}
         </div>{% endif %}
         {% else %}<div class="empty">В команде пока никого.</div>{% endfor %}

@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials %}
+{% block title %}#{{ rule.tag }} — Доступы{% endblock %}
+{% block back %}/access?tab=tags{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/access?tab=tags">Теги и права</a><span>/</span><span>#{{ rule.tag }}</span></div>
+<form method="post" class="grid split" style="margin-top: 12px">
+  <div class="panel">
+    <div class="panel-head"><span class="tag-dot tone-{{ rule.tone }}"></span><h3>{{ rule.title }}</h3><span class="tiny faint">#{{ rule.tag }}</span></div>
+    {% for group, items in catalog %}
+    <div class="perm-group">
+      <span class="label-mono">{{ group }}</span>
+      {% for key, name, hint in items %}
+      <label class="perm-row">
+        <span class="grow"><b>{{ name }}</b>{% if hint %}<span>{{ hint }}</span>{% endif %}</span>
+        <span class="switch"><input type="checkbox" name="p:{{ key }}" value="1" {{ 'checked' if key in (rule.privileges or []) }}><i></i></span>
+      </label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <div class="panel-foot sticky-foot"><button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button></div>
+  </div>
+
+  <div class="stack">
+    <div class="panel">
+      <div class="panel-head"><h3>Тег</h3></div>
+      <div class="panel-body stack-sm" style="gap: 14px">
+        <label class="field"><span class="label">Как называть</span><input class="input" name="title" value="{{ rule.title }}" maxlength="120"></label>
+        <label class="toggle-row"><span class="grow"><b>Кабинет</b><span>Как кабинеты в школе: при нескольких кабинетах человек переключается между ними. Не кабинет — права добавляются к любому кабинету.</span></span>
+          <span class="switch"><input type="checkbox" name="is_view" value="1" {{ 'checked' if rule.is_view }}><i></i></span></label>
+        <div class="field"><span class="label">Цвет</span>
+          <div class="row" style="gap: 8px">{% for t in ('blue', 'violet', 'crimson', 'teal', 'amber') %}<label class="tone-pick"><input type="radio" name="tone" value="{{ t }}" {{ 'checked' if rule.tone == t }}><span class="tag-dot tone-{{ t }}"></span></label>{% endfor %}</div></div>
+        <label class="field"><span class="label">Порядок среди кабинетов</span><input class="input mono" type="number" name="position" min="0" max="999" value="{{ rule.position }}" style="width: 110px"></label>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Лимиты</h3></div>
+      <div class="panel-body stack-sm" style="gap: 12px">
+        {% for key, (name, unit, _) in limits.items() %}
+        <label class="field"><span class="label">{{ name }}, {{ unit }}</span><input class="input mono" name="l:{{ key }}" inputmode="decimal" value="{{ '%g' % rule.limits[key] if key in (rule.limits or {}) else '' }}" placeholder="без лимита"></label>
+        {% endfor %}
+        <p class="tiny faint">Цены моделей берутся у агрегатора. Например, $1 в день на Claude Opus 4.7 — это около трёх миллионов токенов.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>У кого тег</h3><span class="count-badge spacer">{{ people|length }}</span></div>
+      <div class="rows">
+        {% for m in people %}<a class="r" href="/access/person/{{ m.id }}"><span class="avatar sm">{{ initials(m.name) }}</span><span class="grow small">{{ m.name }}</span>{{ icon('arrow', 14) }}</a>
+        {% else %}<div class="empty">Ни у кого — добавьте тег человеку на его странице.</div>{% endfor %}
+      </div>
+    </div>
+    <button class="btn btn-danger" type="submit" name="action" value="delete" formnovalidate data-confirm="Удалить правило тега #{{ rule.tag }}? Тег у людей останется, но перестанет давать права.">{{ icon('trash', 15) }}Удалить правило</button>
+  </div>
+</form>
+{% endblock %}

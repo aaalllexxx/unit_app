@@ -21,8 +21,8 @@ H = {"Sec-Fetch-Site": "same-origin"}
 def _seed():
     s = M.Session()
     if not s.get(M.Member, "m1"):
-        s.add_all([M.Member(id="m1", name="Мария Сотрудник", role="member", direction_id=2),
-                   M.Member(id="l1", name="Лев Лид", role="lead", roles=["lead", "customer"], direction_id=2)])
+        s.add_all([M.Member(id="m1", name="Мария Сотрудник", role="member", direction_id=2, tags=["сотрудник"]),
+                   M.Member(id="l1", name="Лев Лид", role="lead", direction_id=2, tags=["лид команды", "заказчик"])])
         s.add(M.ProjectMember(project_id=T.PID, member_id="m1", role="Бэкенд"))
         s.add(M.Task(project_id=T.PID, title="Просроченная", column="doing", assignee_id="m1",
                      due=date.today() - timedelta(days=2)))
@@ -33,28 +33,56 @@ def _seed():
 _seed()
 
 
-class RolesTest(unittest.TestCase):
-    def test_switch_role(self):
+class AccessTest(unittest.TestCase):
+    def test_switch_view(self):
         c = T.client("l1")
-        self.assertEqual(c.get("/people").status_code, 200)              # как руководитель направления
-        r = c.post("/role", data={"role": "customer", "next": "/people"}, headers=H)
+        self.assertEqual(c.get("/people").status_code, 200)              # кабинет «Лид команды»
+        r = c.post("/view", data={"view": "заказчик"}, headers=H)
         self.assertEqual(r.headers["Location"], "/home")
         self.assertEqual(c.get("/people").status_code, 403)              # заказчику люди не видны
         with M.Session() as s:
-            self.assertEqual(s.get(M.Member, "l1").role, "lead")         # в базе роль не поменялась
-        c.post("/role", data={"role": "lead"}, headers=H)
+            self.assertEqual(s.get(M.Member, "l1").tags, ["лид команды", "заказчик"])   # теги не тронуты
+        c.post("/view", data={"view": "лид команды"}, headers=H)
         self.assertEqual(c.get("/people").status_code, 200)
-        self.assertEqual(c.post("/role", data={"role": "head"}, headers=H).status_code, 302)
-        self.assertEqual(c.get("/admin").status_code, 403)               # чужую роль не взять
+        c.post("/view", data={"view": "руководитель лаборатории"}, headers=H)          # чужой кабинет не взять
+        self.assertEqual(c.get("/access").status_code, 403)
 
-    def test_head_grants_roles(self):
-        c = T.client("h")
-        c.post("/admin", data={"member_id": "m1", "roles": ["member", "customer"], "company": ""}, headers=H)
+    def test_tags_and_personal_rights(self):
+        h = T.client("h")
+        for url in ("/access", "/access?tab=tags", "/access/person/m1", "/access/tag/сотрудник", "/admin", "/teams"):
+            self.assertEqual(h.get(url).status_code, 200, url)
+        h.post("/access/person/m1", data={"action": "tag_add", "tag": "Доступ к ИИ"}, headers=H)
         with M.Session() as s:
-            self.assertEqual(s.get(M.Member, "m1").all_roles(), ["member", "customer"])
-        c.post("/admin", data={"member_id": "m1", "roles": ["member"]}, headers=H)
-        for tab in ("overview", "people", "ai"):
-            self.assertEqual(c.get(f"/admin?tab={tab}").status_code, 200, tab)
+            self.assertIn("доступ к ии", s.get(M.Member, "m1").tags)
+        # Личный запрет перекрывает теги, личное разрешение — добавляет
+        h.post("/access/person/m1", data={"action": "personal", "p:page.time": "deny", "p:admin.overview": "allow",
+                                          "l:ai_day_usd": "0,5"}, headers=H)
+        m1 = T.client("m1")
+        self.assertEqual(m1.get("/time").status_code, 403)
+        self.assertEqual(m1.get("/admin").status_code, 200)
+        h.post("/access/person/m1", data={"action": "personal"}, headers=H)                   # всё по тегам
+        self.assertEqual(m1.get("/time").status_code, 200)
+        self.assertEqual(m1.get("/admin").status_code, 403)
+        # Новый тег с правами — сразу действует
+        h.post("/access/tag", data={"tag": "наблюдатель", "title": "Наблюдатель"}, headers=H)
+        h.post("/access/tag/наблюдатель", data={"title": "Наблюдатель", "p:admin.overview": "1"}, headers=H)
+        h.post("/access/person/m1", data={"action": "tag_add", "tag": "наблюдатель"}, headers=H)
+        self.assertEqual(m1.get("/admin").status_code, 200)
+        # Себе «Доступы» не закрыть
+        h.post("/access/person/h", data={"action": "personal", "p:admin.access": "deny"}, headers=H)
+        self.assertEqual(h.get("/access").status_code, 200)
+
+    def test_teams(self):
+        h = T.client("h")
+        r = h.post("/teams", data={"title": "DevOps", "about": "Серверы и выкладки", "icon": "cpu", "tone": "teal"},
+                   headers=H)
+        self.assertIn("/d/devops", r.headers["Location"])
+        self.assertIn("DevOps", h.get("/teams").get_data(as_text=True))
+        with M.Session() as s:
+            tid = s.query(M.Direction).filter_by(slug="devops").one().id
+        h.post("/teams", data={"delete": str(tid)}, headers=H)
+        self.assertNotIn('href="/d/devops"', h.get("/teams").get_data(as_text=True))
+        self.assertEqual(T.client("m1").post("/teams", data={"title": "Чужая"}, headers=H).status_code, 403)
 
 
 class DeskTest(unittest.TestCase):
@@ -127,8 +155,8 @@ class ControlTest(unittest.TestCase):
     def test_signals_and_reminders(self):
         with T.app.test_request_context():
             from flask import g
-            from app import db
-            g.me = db().get(M.Member, "m1")
+            from app import db, with_rights
+            g.me = with_rights(db().get(M.Member, "m1"))
             kinds = [s["kind"] for s in control.signals_for(g.me)]
         self.assertIn("my_late", kinds)
         self.assertGreaterEqual(control.remind_once(), 1)
@@ -141,7 +169,7 @@ class ControlTest(unittest.TestCase):
 class AiTest(unittest.TestCase):
     def setUp(self):
         with M.Session() as s:
-            ai.save(s, "https://example.invalid/v1", "test-model", "", ["head", "lead", "member"], 50, "Будь краток")
+            ai.save(s, "https://example.invalid/v1", "test-model", "", [], 0, "Будь краток")
         self._stream, self._ask = ai.stream, ai.ask
 
     def tearDown(self):
@@ -186,14 +214,18 @@ class AiTest(unittest.TestCase):
         self.assertIn("просроченной", c.post("/api/ai/brief", json={"scope": "day"}, headers=H).get_json()["text"])
         self.assertIn("просроченной", c.get("/home").get_data(as_text=True))
         with M.Session() as s:
-            ai.save(s, "https://example.invalid/v1", "test-model", "", ["head"], 50, "")
+            s.merge(M.MemberAccess(member_id="m1", allow=[], deny=["ai.use"], limits={}))
+            s.commit()
         self.assertEqual(c.post("/api/ai/brief", json={"scope": "day"}, headers=H).status_code, 403)
+        with M.Session() as s:
+            s.delete(s.get(M.MemberAccess, "m1"))
+            s.commit()
 
     def test_admin_saves_settings_without_leaking_key(self):
         c = T.client("h")
         c.post("/admin/ai", data={"base_url": "https://x.invalid/v1", "model": "m", "api_key": "sk-secret-123456",
                                   "roles": ["head", "member"], "daily": "10"}, headers=H)
-        page = c.get("/admin?tab=ai").get_data(as_text=True)
+        page = c.get("/admin/ai").get_data(as_text=True)
         self.assertNotIn("sk-secret-123456", page)
         self.assertIn("sk-…3456", page)
 
@@ -210,3 +242,30 @@ class ProfileTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnitIdSyncTest(unittest.TestCase):
+    def test_first_pull_pushes_old_tags_then_syncs(self):
+        import unitid
+        pushed = []
+        accounts = [{"id": "h", "name": "Руководитель Лаборатории", "email": "h@labunit.ru", "tags": ["школа"]},
+                    {"id": "new1", "name": "Новый Сотрудник", "email": "n@labunit.ru", "tags": ["сотрудник"]},
+                    {"id": "stranger", "name": "Ученик", "email": "s@labunit.ru", "tags": ["школа", "ученик"]}]
+        saved = (unitid._call, unitid.push_tags, unitid.CLIENT_ID, unitid.CLIENT_SECRET)
+        unitid.CLIENT_ID, unitid.CLIENT_SECRET = "lab", "secret"
+        unitid._call = lambda method, path, data=None: {"accounts": [dict(a) for a in accounts]}
+        unitid.push_tags = lambda mid, add=(), remove=(): pushed.append((mid, list(add))) or True
+        try:
+            with M.Session() as s:
+                row = s.get(M.Setting, "unitid_tags_seeded")
+                if row:
+                    s.delete(row)
+                    s.commit()
+            unitid.pull()
+            self.assertIn(("h", ["руководитель лаборатории"]), pushed)          # старый тег ушёл в UNIT ID
+            with M.Session() as s:
+                self.assertIn("руководитель лаборатории", s.get(M.Member, "h").tags)   # и не стёрся
+                self.assertIsNotNone(s.get(M.Member, "new1"))                   # тег с правилом — в лабораторию
+                self.assertIsNone(s.get(M.Member, "stranger"))                  # ученику школы тут делать нечего
+        finally:
+            unitid._call, unitid.push_tags, unitid.CLIENT_ID, unitid.CLIENT_SECRET = saved

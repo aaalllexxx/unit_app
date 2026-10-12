@@ -29,7 +29,7 @@
       <div class="rows">
         {% for m in members %}
         <a class="r" href="/people/{{ m.id }}"><span class="avatar">{{ initials(m.name) }}</span>
-          <span class="grow stack-xs" style="gap: 0"><b class="small strong">{{ m.name }}</b><span class="tiny faint">{{ m.position or roles[m.role] }}</span></span>
+          <span class="grow stack-xs" style="gap: 0"><b class="small strong">{{ m.name }}</b><span class="tiny faint">{{ m.position or m.grade or 'Сотрудник' }}</span></span>
           {% if m.grade %}<span class="chip">{{ m.grade }}</span>{% endif %}</a>
         {% else %}<div class="empty">Пока никого.</div>{% endfor %}
       </div>
@@ -48,14 +48,14 @@
       <div class="panel-body row-wrap">
         {% for t in teams %}<span class="chip">{{ t.title }}</span>{% else %}<p class="small faint">Групп пока нет.</p>{% endfor %}
       </div>
-      {% if me.role == 'head' %}
+      {% if can('teams.manage') %}
       <form method="post" class="panel-foot form-row">
         <input class="input input-sm" name="team" placeholder="Новая группа" required>
         <button class="btn btn-ghost btn-sm" type="submit">{{ icon('plus', 14) }}Добавить</button>
       </form>
       {% endif %}
     </div>
-    {% if me.role == 'head' %}
+    {% if can('teams.manage') %}
     <details class="panel">
       <summary class="panel-head"><h3>Настроить направление</h3><span class="spacer faint">{{ icon('down', 16) }}</span></summary>
       <form method="post" class="panel-body stack-sm">

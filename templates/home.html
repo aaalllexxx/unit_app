@@ -10,7 +10,7 @@
     {% if customer %}<p class="sub">Ваши проекты, их готовность и новости от команды.</p>
     {% else %}<p class="sub">{% if buckets.late %}Есть просроченные задачи — начните с них.{% elif buckets.today %}На сегодня {{ buckets.today|length }} {{ 'задача' if buckets.today|length == 1 else 'задачи' }} со сроком.{% else %}Срочного нет — хороший день, чтобы продвинуть главное.{% endif %}</p>{% endif %}
   </div>
-  {% if not customer and me.role in ('head', 'lead') %}
+  {% if not customer and can('project.create') %}
   <button class="btn btn-primary" type="button" data-sheet-open="new-project">{{ icon('plus', 16) }}Новый проект</button>
   {% endif %}
 </div>
@@ -93,7 +93,7 @@
     <div class="panel">
       <div class="panel-head"><h3>Требует внимания</h3><span class="count-badge spacer">{{ signals|length }}</span></div>
       <div class="signals">{% for s in signals %}{{ signal(s) }}{% endfor %}</div>
-      {% if me.role in ('head', 'lead') %}<a class="panel-foot small muted row" style="gap: 6px" href="/pulse">Все сигналы на «Пульсе» {{ icon('arrow', 14) }}</a>{% endif %}
+      {% if can('page.pulse') %}<a class="panel-foot small muted row" style="gap: 6px" href="/pulse">Все сигналы на «Пульсе» {{ icon('arrow', 14) }}</a>{% endif %}
     </div>
     {% endif %}
 
@@ -162,7 +162,7 @@
 </dialog>
 {% endif %}
 
-{% if me.role in ('head', 'lead') %}
+{% if can('project.create') %}
 <dialog class="sheet" id="new-project" aria-labelledby="np-title">
   <div class="sheet-grip"></div>
   <div class="sheet-head"><h3 id="np-title">Новый проект</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>

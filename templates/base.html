@@ -1,4 +1,4 @@
-{% from '_icons.html' import icon, sprite, initials, dir_icon, dir_short, flashes, logo %}
+{% from '_icons.html' import icon, sprite, initials, dir_icon, flashes, logo %}
 <!doctype html>
 <html lang="ru">
 <head>
@@ -10,7 +10,7 @@
   {% block meta %}{% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/unit.css?v=6">
+  <link rel="stylesheet" href="{{ asset('/static/unit.css') }}">
   <link rel="icon" href="/static/logo.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -18,49 +18,55 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Лаборатория">
-  <script src="/static/unit.js?v=6" defer></script>
-  {% if me and me.role != 'pending' %}<script src="/static/lab.js?v=1" defer></script>{% endif %}
+  <script src="{{ asset('/static/unit.js') }}" defer></script>
+  {% if me and me.perms %}<script src="{{ asset('/static/lab.js') }}" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
 </head>
 <body data-haptics="{{ '1' if haptics else '0' }}">
 {{ sprite() }}
 {% block body %}
 {% set here = request.path %}
-{% set staff = me and me.role in ('head', 'lead', 'member') %}
 {% macro nav(href, ic, full, short, on, cls='') %}<a class="side-link {{ cls }} {{ 'on' if on }}" href="{{ href }}" {{ 'aria-current=page' if on }}>{{ icon(ic, 18) }}<span class="full">{{ full }}</span><span class="short">{{ short }}</span></a>{% endmacro %}
 <div class="shell">
   <aside class="side tabs-explicit">
     <a class="logo" href="{{ '/home' if me else '/' }}">{{ logo('Лаборатория') }}</a>
-    {% if me and me.role != 'pending' %}
+    {% if me and me.perms %}
     <nav aria-label="Разделы">
       <span class="side-label label-mono">Работа</span>
-      {{ nav('/home', 'sun', 'Сегодня', 'Сегодня', here == '/home', 'tab') }}
-      {% if staff %}{{ nav('/desk', 'desk', 'Рабочий стол', 'Стол', here == '/desk', 'tab') }}{% endif %}
-      {{ nav('/projects', 'folder', 'Проекты', 'Проекты', here == '/projects' or here.startswith('/p/'), 'tab') }}
-      {% if staff %}
-      {{ nav('/pulse', 'activity', 'Пульс', 'Пульс', here == '/pulse') }}
-      {{ nav('/time', 'clock', 'Учёт времени', 'Время', here == '/time', '' if ai_on else 'tab') }}
-      {% if ai_on %}{{ nav('/ai', 'spark', 'ИИ-помощник', 'ИИ', here == '/ai', 'tab') }}{% endif %}
+      {% if can('page.home') %}{{ nav('/home', 'sun', 'Сегодня', 'Сегодня', here == '/home', 'tab') }}{% endif %}
+      {% if can('page.projects') %}{{ nav('/projects', 'folder', 'Проекты', 'Проекты', here == '/projects' or here.startswith('/p/'), 'tab') }}{% endif %}
+      {% if can('page.workshop') %}{{ nav('/workshop', 'desk', 'Мастерская', 'Мастерская', here.startswith('/workshop') or here == '/desk', 'tab') }}{% endif %}
+      {% if can('page.ai') and ai_on %}{{ nav('/ai', 'spark', 'ИИ-агент', 'ИИ', here.startswith('/ai'), 'tab') }}{% endif %}
+      {% if can('page.time') %}{{ nav('/time', 'clock', 'Учёт времени', 'Время', here == '/time') }}{% endif %}
+      {% if can('page.pulse') %}{{ nav('/pulse', 'activity', 'Пульс', 'Пульс', here == '/pulse') }}{% endif %}
+      {% if can('page.people') or can('page.teams') %}
       <span class="side-label label-mono">Лаборатория</span>
-      {{ nav('/people', 'users', 'Люди', 'Люди', here == '/people' or here.startswith('/people/')) }}
-      {% for d in nav_dirs %}
-      <a class="side-link {{ 'on' if here == '/d/' ~ d.slug }}" href="/d/{{ d.slug }}">{{ dir_icon(d, 18) }}<span class="full">{{ dir_short(d) }}</span></a>
+      {% if can('page.people') %}{{ nav('/people', 'users', 'Люди', 'Люди', here == '/people' or here.startswith('/people/')) }}{% endif %}
+      {% if can('page.teams') %}{{ nav('/teams', 'layers', 'Команды', 'Команды', here.startswith('/teams') or here.startswith('/d/')) }}{% endif %}
+      {% endif %}
+      {% if can('admin.overview') or can('page.admin') or can('ai.settings') %}
+      <span class="side-label label-mono">Управление</span>
+      {% if can('admin.overview') %}{{ nav('/admin', 'chart', 'Обзор', 'Обзор', here == '/admin') }}{% endif %}
+      {% if can('page.admin') %}{{ nav('/access', 'key', 'Доступы', 'Доступы', here.startswith('/access')) }}{% endif %}
+      {% if can('ai.settings') %}{{ nav('/admin/ai', 'settings', 'ИИ лаборатории', 'ИИ', here == '/admin/ai') }}{% endif %}
+      {% endif %}
+      {% if services %}
+      <span class="side-label label-mono">Сервисы UNIT</span>
+      {% for sv in services %}
+      <a class="side-link ext" href="{{ sv.url }}" title="{{ sv.description or sv.name }}">{{ icon(sv.icon, 18) }}<span class="full">{{ sv.name }}</span><span class="short">{{ sv.name.split()[0] }}</span><span class="count">{{ icon('external', 13) }}</span></a>
       {% endfor %}
       {% endif %}
-      {% if me.role == 'head' %}
-      <span class="side-label label-mono">Управление</span>
-      {{ nav('/admin', 'chart', 'Обзор и доступы', 'Обзор', here == '/admin') }}
-      {% endif %}
+      <a class="side-link" href="{{ support_url }}">{{ icon('chat', 18) }}<span class="full">Поддержка</span><span class="short">Поддержка</span></a>
       <button class="side-link tab tab-more" type="button" data-sheet-open="more-sheet">{{ icon('more', 18) }}<span class="short">Ещё</span>{% if unread %}<span class="dot-count">{{ unread }}</span>{% endif %}</button>
     </nav>
     {% else %}<nav></nav>{% endif %}
     {% if me %}
     <div class="side-foot">
       <div class="user-card">
-        <a class="avatar" href="{{ '/people/' ~ me.id if staff else issuer ~ '/apps' }}" title="Профиль">{{ initials(me.name) }}</a>
+        <a class="avatar" href="{{ '/people/' ~ me.id if can('page.people') else issuer ~ '/apps' }}" title="Профиль">{{ initials(me.name) }}</a>
         <div class="who"><b>{{ me.name }}</b>
-          {% if me.granted|length > 1 %}<button class="role-switch" type="button" data-sheet-open="role-sheet">{{ role_short[me.role] }}{{ icon('down', 12) }}</button>
-          {% else %}<span>{{ roles[me.role] }}</span>{% endif %}</div>
+          {% if me.views|length > 1 %}<button class="role-switch" type="button" data-sheet-open="view-sheet">{{ view_titles[me.view] }}{{ icon('down', 12) }}</button>
+          {% elif me.view %}<span>{{ view_titles[me.view] }}</span>{% endif %}</div>
         <a class="btn btn-quiet btn-icon btn-sm" href="/logout" title="Выйти" aria-label="Выйти">{{ icon('logout', 17) }}</a>
       </div>
     </div>
@@ -71,12 +77,12 @@
       {% if self.back() %}<a class="icon-btn back-btn" href="{% block back %}{% endblock %}" aria-label="Назад">{{ icon('back', 20) }}</a>
       {% else %}<a class="appbar-mark" href="{{ '/home' if me else '/' }}" aria-label="Лаборатория UNIT"><span class="mark" aria-hidden="true"></span></a>{% endif %}
       <div class="appbar-title"><small>Лаборатория UNIT</small><b>{% block apptitle %}{{ self.title().split(' — ')[0] }}{% endblock %}</b></div>
-      {% if me and me.role != 'pending' %}
+      {% if me and me.perms %}
       <div class="topbar-actions">
         {% if running %}<a class="timer-pill" href="/time" data-timer="{{ running.started_at.isoformat() }}" title="Идёт таймер"><span class="live-dot"></span><span data-timer-text>0:00</span></a>{% endif %}
-        {% if ai_on %}<button class="ai-btn hide-sm" type="button" data-ai-open>{{ icon('spark', 16) }}Спросить ИИ</button>{% endif %}
+        {% if ai_on %}<button class="ai-btn hide-sm" type="button" data-ai-open>{{ icon('spark', 16) }}Спросить агента</button>{% endif %}
         <a class="icon-btn" href="/notices" title="Уведомления" aria-label="Уведомления" data-bell>{{ icon('bell', 20) }}{% if unread %}<span class="dot-badge">{{ unread if unread < 100 else '99+' }}</span>{% endif %}</a>
-        <a class="avatar only-sm" href="{{ '/people/' ~ me.id if staff else issuer ~ '/apps' }}" title="Профиль">{{ initials(me.name) }}</a>
+        <a class="avatar only-sm" href="{{ '/people/' ~ me.id if can('page.people') else issuer ~ '/apps' }}" title="Профиль">{{ initials(me.name) }}</a>
       </div>
       {% endif %}
     </header>
@@ -87,31 +93,33 @@
   </main>
 </div>
 
-{% if me and me.role != 'pending' %}
+{% if me and me.perms %}
 {# Телефон: всё, что не влезло во вкладки #}
 <dialog class="sheet" id="more-sheet" aria-labelledby="more-title">
   <div class="sheet-grip"></div>
   <div class="sheet-head"><h3 id="more-title">Разделы</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
   <div class="sheet-body">
     <div class="more-grid">
-      {% if staff %}
-      <a href="/pulse">{{ icon('activity', 22) }}Пульс</a>
-      <a href="/time">{{ icon('clock', 22) }}Время</a>
-      <a href="/people">{{ icon('users', 22) }}Люди</a>
-      {% endif %}
+      {% if can('page.time') %}<a href="/time">{{ icon('clock', 22) }}Время</a>{% endif %}
+      {% if can('page.pulse') %}<a href="/pulse">{{ icon('activity', 22) }}Пульс</a>{% endif %}
+      {% if can('page.people') %}<a href="/people">{{ icon('users', 22) }}Люди</a>{% endif %}
+      {% if can('page.teams') %}<a href="/teams">{{ icon('layers', 22) }}Команды</a>{% endif %}
       <a href="/notices">{{ icon('bell', 22) }}Уведомления{% if unread %} · {{ unread }}{% endif %}</a>
-      {% if staff %}<a href="/people/{{ me.id }}">{{ icon('user', 22) }}Профиль</a>{% endif %}
-      {% if me.role == 'head' %}<a href="/admin">{{ icon('chart', 22) }}Обзор</a>{% endif %}
-      {% for d in nav_dirs %}<a href="/d/{{ d.slug }}">{{ dir_icon(d, 22) }}{{ dir_short(d) }}</a>{% endfor %}
+      {% if can('page.people') %}<a href="/people/{{ me.id }}">{{ icon('user', 22) }}Профиль</a>{% endif %}
+      {% if can('admin.overview') %}<a href="/admin">{{ icon('chart', 22) }}Обзор</a>{% endif %}
+      {% if can('page.admin') %}<a href="/access">{{ icon('key', 22) }}Доступы</a>{% endif %}
+      {% if can('ai.settings') %}<a href="/admin/ai">{{ icon('settings', 22) }}ИИ лаборатории</a>{% endif %}
+      <a href="{{ support_url }}">{{ icon('chat', 22) }}Поддержка</a>
+      {% for sv in services %}<a href="{{ sv.url }}">{{ icon(sv.icon, 22) }}{{ sv.name }}</a>{% endfor %}
       <a href="{{ issuer }}/apps">{{ icon('key', 22) }}UNIT ID</a>
     </div>
-    {% if me.granted|length > 1 %}
+    {% if me.views|length > 1 %}
     <div class="stack-sm">
-      <span class="label-mono">Роль</span>
-      {% for r in me.granted %}
-      <form method="post" action="/role"><input type="hidden" name="next" value="{{ request.path }}">
-        <button class="choice" type="submit" name="role" value="{{ r }}" style="width: 100%; background: {{ 'var(--accent-soft)' if r == me.role else 'var(--surface)' }}; border-color: {{ 'var(--accent)' if r == me.role else 'var(--line)' }}">
-          <span class="grow" style="text-align: left"><b>{{ roles[r] }}</b></span>{% if r == me.role %}{{ icon('check', 16) }}{% endif %}</button></form>
+      <span class="label-mono">Кабинет</span>
+      {% for v in me.views %}
+      <form method="post" action="/view">
+        <button class="choice {{ 'on' if v == me.view }}" type="submit" name="view" value="{{ v }}">
+          <span class="grow" style="text-align: left"><b>{{ view_titles[v] }}</b></span>{% if v == me.view %}{{ icon('check', 16) }}{% endif %}</button></form>
       {% endfor %}
     </div>
     {% endif %}
@@ -121,28 +129,28 @@
   <div class="sheet-foot"><a class="btn btn-ghost" href="/logout">{{ icon('logout', 16) }}Выйти</a></div>
 </dialog>
 
-{% if me.granted|length > 1 %}
-<dialog class="sheet" id="role-sheet" aria-labelledby="role-title">
+{% if me.views|length > 1 %}
+<dialog class="sheet" id="view-sheet" aria-labelledby="view-title">
   <div class="sheet-grip"></div>
-  <div class="sheet-head"><h3 id="role-title">Смотреть портал как</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
-  <form method="post" action="/role" class="sheet-body">
-    <input type="hidden" name="next" value="{{ request.path }}">
-    {% for r in me.granted %}
-    <button class="choice" type="submit" name="role" value="{{ r }}" style="background: {{ 'var(--accent-soft)' if r == me.role else 'var(--surface)' }}; border-color: {{ 'var(--accent)' if r == me.role else 'var(--line)' }}">
-      <span class="grow" style="text-align: left"><b>{{ roles[r] }}</b><span>{{ {'head': 'Все проекты, люди, доступы и настройки ИИ', 'lead': 'Проекты направления, команда и пульс', 'member': 'Свои задачи, стол и проекты команды', 'customer': 'Готовность своих проектов и новости'}[r] }}</span></span>
-      {% if r == me.role %}{{ icon('check', 18) }}{% endif %}</button>
+  <div class="sheet-head"><h3 id="view-title">Кабинет</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <form method="post" action="/view" class="sheet-body">
+    <p class="small muted">Портал покажет разделы и данные выбранного кабинета — как переключение кабинетов в школе.</p>
+    {% for v in me.views %}
+    <button class="choice {{ 'on' if v == me.view }}" type="submit" name="view" value="{{ v }}">
+      <span class="grow" style="text-align: left"><b>{{ view_titles[v] }}</b><span>#{{ v }}</span></span>
+      {% if v == me.view %}{{ icon('check', 18) }}{% endif %}</button>
     {% endfor %}
   </form>
 </dialog>
 {% endif %}
 
 {% if ai_on %}
-{# ИИ-помощник поверх любой страницы: справа на компьютере, снизу на телефоне #}
+{# ИИ-агент поверх любой страницы: справа на компьютере, снизу на телефоне #}
 <dialog class="sheet drawer tall" id="ai-sheet" aria-labelledby="ai-title">
   <div class="sheet-grip"></div>
   <div class="sheet-head">
     <span class="ai-mark">{{ icon('spark', 16) }}</span>
-    <h3 id="ai-title">ИИ-помощник</h3>
+    <h3 id="ai-title">ИИ-агент</h3>
     <a class="icon-btn" href="/ai" title="Открыть полностью" aria-label="Открыть полностью">{{ icon('external', 17) }}</a>
     <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button>
   </div>

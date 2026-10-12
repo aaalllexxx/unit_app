@@ -8,7 +8,7 @@
     <h1>Проекты</h1>
     <p class="sub">Все проекты, которые вам видны, с готовностью по этапам.</p>
   </div>
-  {% if me.role in ('head', 'lead') %}
+  {% if can('project.create') %}
   <div class="actions"><button class="btn btn-primary" type="button" data-sheet-open="new-project">{{ icon('plus', 16) }}Новый проект</button></div>
   {% endif %}
 </div>
@@ -40,7 +40,7 @@
   {% else %}<div class="panel empty" style="grid-column: 1 / -1">Проектов пока нет.</div>{% endfor %}
 </div>
 
-{% if me.role in ('head', 'lead') %}
+{% if can('project.create') %}
 <dialog class="sheet" id="new-project" aria-labelledby="np-title">
   <div class="sheet-grip"></div>
   <div class="sheet-head"><h3 id="np-title">Новый проект</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>

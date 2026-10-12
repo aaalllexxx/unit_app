@@ -20,7 +20,8 @@ from sqlalchemy import select
 
 import ai
 import models as M
-from app import (PHASE_INDEX, PHASE_NAME, STAFF, app, can_edit, db, is_team, need, notify, project_percent,
+import access
+from app import (PHASE_INDEX, PHASE_NAME, app, can_edit, db, is_team, need, notify, project_percent,
                  set_column, team_ids, visible_projects)
 from control import project_health, scope_projects, signals_for
 
@@ -67,7 +68,7 @@ def _fmt_task(t, names) -> str:
 def context(person, project_id=None, item_id=None) -> str:
     today = date.today()
     lines = [f"Сегодня {today:%d.%m.%Y}, {WEEKDAYS[today.weekday()]}."]
-    lines.append(f"Человек: {person.name} (id {person.id}), роль — {M.ROLES.get(person.role, person.role)}"
+    lines.append(f"Человек: {person.name} (id {person.id}), кабинет — {access.view_title(db(), person.view) if person.view else 'без кабинета'}"
                  + (f", {person.position}" if person.position else "") + ".")
     people = {m.id: m.name for m in db().scalars(select(M.Member))}
     mine = db().scalars(select(M.Task).where(M.Task.assignee_id == person.id, M.Task.column != "done")
@@ -75,7 +76,7 @@ def context(person, project_id=None, item_id=None) -> str:
     if mine:
         lines.append("\nОткрытые задачи человека:")
         lines += ["- " + _fmt_task(t, people) for t in mine]
-    projects = scope_projects(person) if person.role in STAFF else visible_projects(person)
+    projects = scope_projects(person) if access.can(person, "task.work") else visible_projects(person)
     if projects:
         lines.append("\nПроекты:")
     for p in projects[:15]:
@@ -270,24 +271,24 @@ def _message_json(m) -> dict:
 
 
 @app.route("/ai")
-@need(*STAFF)
+@need("ai.use")
 def ai_page():
     thread = _thread(request.args.get("thread") or ("p" + request.args["project"] if request.args.get("project") else "me"))
     projects = [p for p in visible_projects(g.me) if is_team(g.me, p)]
-    return render_template("ai.html", thread=thread, projects=projects, ready=ai.allowed(db(), g.me.role),
+    return render_template("ai.html", thread=thread, projects=projects, ready=ai.allowed(db(), g.me),
                            left=ai.left_today(db(), g.me.id), ask=request.args.get("ask", ""))
 
 
 @app.get("/api/ai/history")
-@need(*STAFF)
+@need("ai.use")
 def ai_history():
     thread = _thread(request.args.get("thread"))
     return {"thread": thread, "messages": [_message_json(m) for m in _history(thread)],
-            "ready": ai.allowed(db(), g.me.role), "left": ai.left_today(db(), g.me.id)}
+            "ready": ai.allowed(db(), g.me), "left": ai.left_today(db(), g.me.id)}
 
 
 @app.post("/api/ai/clear")
-@need(*STAFF)
+@need("ai.use")
 def ai_clear():
     thread = _thread((request.get_json(silent=True) or {}).get("thread"))
     for m in db().scalars(select(M.AiMessage).where(M.AiMessage.member_id == g.me.id, M.AiMessage.thread == thread)):
@@ -301,14 +302,14 @@ def _sse(event: dict) -> str:
 
 
 @app.post("/api/ai/chat")
-@need(*STAFF)
+@need("ai.use")
 def ai_chat():
     """Вопрос → ответ потоком (text/event-stream): {delta} … {done, message}."""
     data = request.get_json(silent=True) or {}
     text = str(data.get("text") or "").strip()[:6000]
     if not text:
         return {"error": "Пустой вопрос"}, 400
-    if not ai.allowed(db(), g.me.role):
+    if not ai.allowed(db(), g.me):
         return {"error": "ИИ для вашей роли не включён — обратитесь к руководителю лаборатории"}, 403
     if ai.left_today(db(), g.me.id) <= 0:
         return {"error": "На сегодня запросы к ИИ закончились — лимит задаёт руководитель"}, 429
@@ -349,7 +350,7 @@ def ai_chat():
 
 
 @app.post("/api/ai/apply")
-@need(*STAFF)
+@need("ai.use")
 def ai_apply():
     data = request.get_json(silent=True) or {}
     msg = db().get(M.AiMessage, int(data.get("message_id") or 0))
@@ -380,13 +381,13 @@ BRIEFS = {
 
 
 @app.post("/api/ai/brief")
-@need(*STAFF)
+@need("ai.use")
 def ai_brief():
     """Сводка дня или «Пульса» — раз в день, кешируется."""
     scope = (request.get_json(silent=True) or {}).get("scope")
     if scope not in BRIEFS:
         abort(400)
-    if not ai.allowed(db(), g.me.role):
+    if not ai.allowed(db(), g.me):
         return {"error": "ИИ не включён"}, 403
     if ai.left_today(db(), g.me.id) <= 0:
         return {"error": "Запросы к ИИ на сегодня закончились"}, 429
@@ -407,14 +408,16 @@ def ai_brief():
 
 
 # ─── Настройка ИИ (руководитель) ────────────────────────────────────────────
-@app.post("/admin/ai")
-@need("head")
+@app.route("/admin/ai", methods=["GET", "POST"])
+@need("ai.settings")
 def admin_ai():
+    if request.method == "GET":
+        return render_template("admin_ai.html", cfg=ai.settings(db()), ready=ai.configured(db()))
     f = request.form
     if f.get("forget"):
         ai.forget_key(db())
         flash("Ключ удалён", "ok")
-        return redirect(url_for("admin", tab="ai"))
+        return redirect(url_for("admin_ai"))
     try:
         daily = int(f.get("daily") or 0)
     except ValueError:
@@ -428,7 +431,7 @@ def admin_ai():
             flash("Проверка не прошла: " + str(error), "err")
     else:
         flash("Настройки ИИ сохранены", "ok")
-    return redirect(url_for("admin", tab="ai"))
+    return redirect(url_for("admin_ai"))
 
 
 def purge_old() -> None:

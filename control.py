@@ -19,7 +19,8 @@ from flask import g, render_template, request
 from sqlalchemy import func, select
 
 import models as M
-from app import STAFF, app, db, need, project_percent, team_ids, visible_projects
+import access
+from app import app, db, need, project_percent, staff_members, team_ids, visible_projects
 
 STALE_DAYS = 7
 REVIEW_DAYS = 3
@@ -86,25 +87,25 @@ def project_signals(p, parts=None, tasks=None) -> list:
 def scope_projects(person) -> list:
     """Проекты, за которые человек отвечает или в которых работает."""
     rows = visible_projects(person)
-    if person.role == "head":
+    if access.can(person, "project.see_all"):
         return rows
-    if person.role == "lead":
+    if access.can(person, "project.see_team"):
         return [p for p in rows if p.lead_id == person.id or (person.direction_id and p.direction_id == person.direction_id)
                 or person.id in team_ids(p.id)]
     return [p for p in rows if person.id in team_ids(p.id) or p.lead_id == person.id]
 
 
 def people_in_scope(person) -> list:
-    if person.role == "head":
-        return db().scalars(select(M.Member).where(M.Member.role.in_(STAFF)).order_by(M.Member.name)).all()
-    if person.role == "lead":
-        ids = set()
-        for p in scope_projects(person):
-            ids |= set(team_ids(p.id))
-        q = select(M.Member).where(M.Member.role.in_(STAFF))
-        rows = db().scalars(q.order_by(M.Member.name)).all()
-        return [m for m in rows if m.id in ids or (person.direction_id and m.direction_id == person.direction_id)]
-    return []
+    """Чей прогресс человек видит: все — с правом на все проекты, иначе — команда и свои проекты."""
+    if not access.can(person, "people.progress"):
+        return []
+    rows = staff_members()
+    if access.can(person, "project.see_all"):
+        return rows
+    ids = set()
+    for p in scope_projects(person):
+        ids |= set(team_ids(p.id))
+    return [m for m in rows if m.id in ids or (person.direction_id and m.direction_id == person.direction_id)]
 
 
 def load_of(members) -> dict:
@@ -128,7 +129,7 @@ def signals_for(person) -> list:
     """Сигналы для человека: свои — всем, по проектам и людям — тем, кто ими руководит."""
     out = []
     today = date.today()
-    if person.role not in STAFF:
+    if not access.can(person, "task.work"):
         return out
     mine = db().scalars(select(M.Task).where(M.Task.assignee_id == person.id, M.Task.column != "done")).all()
     late = [t for t in mine if t.due and t.due < today]
@@ -142,7 +143,7 @@ def signals_for(person) -> list:
             if p and p.status == "active":
                 out.append(_sig("amber", f"Ваша часть «{part.title}» без движения {idle} дн.", f"/p/{p.id}#parts",
                                 "layers", p.title, "my_stale"))
-    if person.role in ("head", "lead"):
+    if access.can(person, "page.pulse"):
         for p in scope_projects(person):
             out.extend(project_signals(p))
         load = load_of(people_in_scope(person))
@@ -156,10 +157,12 @@ def signals_for(person) -> list:
             if c.member_id in names and c.member_id != person.id:
                 out.append(_sig("red", f"{names[c.member_id]}: мешает — {c.blockers[:120]}", "/pulse#checkins",
                                 "flag", "", "blocker"))
-        if person.role == "head":
-            waiting = db().scalar(select(func.count()).select_from(M.Member).where(M.Member.role == "pending"))
+        if access.can(person, "admin.access"):
+            all_rules = access.rules(db())
+            waiting = sum(1 for m in db().scalars(select(M.Member))
+                          if not access.resolve(db(), m, all_rules=all_rules)["perms"])
             if waiting:
-                out.append(_sig("amber", f"Ждут доступа к порталу: {waiting}", "/admin?tab=people", "user", "", "pending"))
+                out.append(_sig("amber", f"Ждут доступа к порталу: {waiting}", "/access?tab=people", "user", "", "pending"))
     rank = {"red": 0, "amber": 1}
     return sorted(out, key=lambda s: rank.get(s["level"], 2))
 
@@ -174,7 +177,7 @@ def leads_of(person) -> set:
         d = db().get(M.Direction, person.direction_id)
         if d and d.lead_id:
             ids.add(d.lead_id)
-    ids |= set(db().scalars(select(M.Member.id).where(M.Member.role == "head")).all())
+    ids |= {m.id for m in access.people_with(db(), "project.see_all")}      # руководители лаборатории
     ids.discard(person.id)
     return ids
 
@@ -191,7 +194,7 @@ def _throughput(project_ids, days: int = 14) -> list:
 
 
 @app.route("/pulse")
-@need(*STAFF)
+@need("page.pulse")
 def pulse():
     """Пульс: что горит, как идут проекты, кто перегружен, что мешает."""
     person = g.me
