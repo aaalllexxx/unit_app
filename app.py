@@ -951,6 +951,7 @@ def _task_json(task) -> dict:
             who = db().get(M.Member, c.author_id)
             authors[c.author_id] = who.name if who else "—"
         comments.append({"id": c.id, "author": authors[c.author_id], "mine": c.author_id == g.me.id,
+                         "can_delete": c.author_id == g.me.id or can("journal.moderate"),
                          "at": c.created_at.strftime("%d.%m %H:%M"), "text": c.text})
     return {"id": task.id, "title": task.title, "about": task.about, "column": task.column, "phase": task.phase,
             "can_delete": can_delete_task(task, db().get(M.Project, task.project_id)),
@@ -1013,6 +1014,40 @@ def task_comment(tid):
     for mid in {task.assignee_id, task.created_by, p.lead_id} - {None, "", g.me.id}:
         notice(mid, f"{g.me.name} о задаче «{task.title}»: {text[:120]}", f"/p/{p.id}?task={task.id}#tasks", "task")
     return _task_json(task)
+
+
+@app.post("/api/task/<int:tid>/comment/<int:cid>/delete")
+@need("task.work", "journal.moderate")
+def task_comment_delete(tid, cid):
+    """Свой комментарий удаляет автор, чужой — тот, у кого право journal.moderate."""
+    task = db().get(M.Task, tid)
+    comment = db().get(M.TaskComment, cid)
+    if not task or not comment or comment.task_id != task.id:
+        abort(404)
+    project_or_404(task.project_id)
+    if comment.author_id != g.me.id and not can("journal.moderate"):
+        return {"error": "Удалить чужой комментарий может только модератор журналов"}, 403
+    db().delete(comment)
+    db().commit()
+    return _task_json(task)
+
+
+@app.post("/p/<int:pid>/update/<int:uid>/delete")
+@need("task.work", "journal.moderate")
+def project_update_delete(pid, uid):
+    """Запись журнала: свою удаляет автор, любую — модератор журналов (право journal.moderate)."""
+    project_or_404(pid)
+    row = db().get(M.Update, uid)
+    if not row or row.project_id != pid:
+        abort(404)
+    if row.author_id != g.me.id and not can("journal.moderate"):
+        abort(403)
+    db().delete(row)
+    db().commit()
+    if request.accept_mimetypes.best == "application/json":
+        return {"ok": True}
+    flash("Запись удалена", "ok")
+    return redirect(url_for("project", pid=pid) + "#journal")
 
 
 @app.route("/p/<int:pid>/update", methods=["POST"])

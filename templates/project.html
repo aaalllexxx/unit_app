@@ -208,12 +208,17 @@
     {% endif %}
     <div class="rows">
       {% for u in updates %}
-      <div class="r" style="align-items: flex-start">
+      <div class="r task-row" style="align-items: flex-start">
         <span class="avatar sm">{{ initials(people[u.author_id].name if people.get(u.author_id) else '?') }}</span>
         <div class="grow stack-xs">
           <div class="row-wrap tiny faint" style="gap: 8px"><b class="small" style="color: var(--ink); font-weight: 600">{{ people[u.author_id].name if people.get(u.author_id) else '' }}</b><span class="mono">{{ u.created_at.strftime('%d.%m.%Y %H:%M') }}</span>{% if u.for_customer and not customer %}<span class="chip tone s-idea" style="height: 20px">видно заказчику</span>{% endif %}</div>
           <p class="small pre">{{ u.text }}</p>
         </div>
+        {% if u.author_id == me.id or can('journal.moderate') %}
+        <form method="post" action="/p/{{ p.id }}/update/{{ u.id }}/delete">
+          <button class="icon-btn row-del" type="submit" title="Удалить запись" aria-label="Удалить запись"
+                  data-confirm="{{ 'Удалить свою запись из журнала?' if u.author_id == me.id else 'Удалить чужую запись из журнала? Автор её больше не увидит.' }}">{{ icon('trash', 15) }}</button></form>
+        {% endif %}
       </div>
       {% else %}<div class="empty">Записей пока нет.</div>{% endfor %}
     </div>

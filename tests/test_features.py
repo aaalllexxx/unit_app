@@ -126,6 +126,31 @@ class TasksTest(unittest.TestCase):
         self.assertTrue(r.get_json()["ok"])
         self.assertEqual(T.client("c").get(f"/api/task/{tid}").status_code, 403)   # заказчику — нет
 
+    def test_delete_own_and_moderate_journal(self):
+        h, m1 = T.client("h"), T.client("m1")
+        with M.Session() as s:
+            tid = s.query(M.Task).filter_by(title="Просроченная").one().id
+        mine = m1.post(f"/api/task/{tid}/comment", json={"text": "моё"}, headers=H).get_json()["comments"][-1]
+        boss = h.post(f"/api/task/{tid}/comment", json={"text": "руководителя"}, headers=H).get_json()["comments"][-1]
+        self.assertTrue(mine["can_delete"])
+        # Чужой комментарий сотруднику не удалить, свой — можно; руководитель (journal.moderate) удаляет любой
+        self.assertEqual(m1.post(f"/api/task/{tid}/comment/{boss['id']}/delete", headers=H).status_code, 403)
+        left = m1.post(f"/api/task/{tid}/comment/{mine['id']}/delete", headers=H).get_json()["comments"]
+        self.assertNotIn(mine["id"], [c["id"] for c in left])
+        mine = m1.post(f"/api/task/{tid}/comment", json={"text": "ещё"}, headers=H).get_json()["comments"][-1]
+        self.assertEqual(h.post(f"/api/task/{tid}/comment/{mine['id']}/delete", headers=H).status_code, 200)
+        # Журнал проекта
+        m1.post(f"/p/{T.PID}/update", data={"text": "Запись сотрудника"}, headers=H)
+        h.post(f"/p/{T.PID}/update", data={"text": "Запись руководителя"}, headers=H)
+        with M.Session() as s:
+            own = s.query(M.Update).filter_by(text="Запись сотрудника").one().id
+            other = s.query(M.Update).filter_by(text="Запись руководителя").one().id
+        self.assertEqual(m1.post(f"/p/{T.PID}/update/{other}/delete", headers=H).status_code, 403)
+        self.assertEqual(m1.post(f"/p/{T.PID}/update/{own}/delete", headers=H).status_code, 302)
+        self.assertEqual(h.post(f"/p/{T.PID}/update/{other}/delete", headers=H).status_code, 302)
+        with M.Session() as s:
+            self.assertFalse(s.query(M.Update).filter(M.Update.id.in_([own, other])).count())
+
 
 class TimerCheckinTest(unittest.TestCase):
     def test_timer_writes_time(self):

@@ -48,6 +48,8 @@ CATALOG = [
     ("Задачи и работа", [
         ("task.work", "Работать с задачами", "Создавать, двигать, комментировать задачи в своих проектах"),
         ("task.delete_any", "Удалять любые задачи", "Свои созданные задачи удалять можно всегда"),
+        ("journal.moderate", "Удалять чужие записи и комментарии",
+         "Журналы проектов и обсуждения задач; свои удалять можно всегда"),
         ("time.track", "Записывать время", ""),
         ("workshop.use", "Пользоваться мастерской", ""),
         ("git.link", "Привязывать git-аккаунт", "Репозитории в мастерской"),
@@ -61,6 +63,7 @@ CATALOG = [
     ("ИИ", [
         ("ai.use", "Пользоваться ИИ-агентом", ""),
         ("ai.pick_model", "Выбирать модель", "Иначе — модель, заданная лабораторией"),
+        ("ai.auto", "Агент без подтверждений", "Режим «Авто»: агент меняет задачи и проекты, не спрашивая «Разрешить»"),
         ("ai.agent_admin", "Агент администрирует", "Агент может делать то же, что человек в «Доступах»"),
         ("ai.settings", "Настраивать ИИ лаборатории", "Ключ, модели, команда агента"),
     ]),
@@ -86,11 +89,14 @@ DEFAULT_RULES = [
      {"ai_day_usd": 5.0, "ai_month_usd": 60.0}, "crimson"),
     ("лид команды", "Лид команды", True,
      STAFF_BASE + ["project.create", "project.see_team", "project.edit_team", "task.delete_any",
-                   "people.progress", "ai.pick_model"],
+                   "people.progress", "ai.pick_model", "ai.auto"],
      {"ai_day_usd": 3.0, "ai_month_usd": 40.0}, "violet"),
     ("сотрудник", "Сотрудник", True, STAFF_BASE[:], {"ai_day_usd": 1.0, "ai_month_usd": 15.0}, "blue"),
     ("заказчик", "Заказчик", True, ["page.home", "page.projects", "customer.view"], {}, "teal"),
 ]
+# Новые права появляются в уже настроенных правилах сами — один раз, у тех, у кого
+# есть «право-якорь» (руководителю — всё новое, что касается управления)
+GRANTS = {"journal.moderate": "admin.access", "ai.auto": "admin.access"}
 LEGACY_ROLE_TAGS = {"head": "руководитель лаборатории", "lead": "лид команды", "member": "сотрудник",
                     "customer": "заказчик"}
 
@@ -109,6 +115,15 @@ def ensure_defaults(s) -> None:
                 if tag and tag not in tags:
                     tags.append(tag)
             member.tags = tags
+    for key, anchor in GRANTS.items():
+        flag = "grant:" + key
+        if s.get(M.Setting, flag):
+            continue
+        for rule in s.scalars(select(M.TagRule)):
+            privs = list(rule.privileges or [])
+            if anchor in privs and key not in privs:
+                rule.privileges = privs + [key]
+        s.add(M.Setting(key=flag, value="1"))
     s.commit()
 
 

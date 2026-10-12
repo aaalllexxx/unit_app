@@ -672,8 +672,10 @@
     function renderComments(list) {
         var box = $('[data-comments]', taskSheet);
         box.innerHTML = list.length ? list.map(function (c) {
-            return '<div class="comment"><span class="avatar sm">' + esc(c.author.split(' ').map(function (p) { return p[0]; }).join('').slice(0, 2)) + '</span>'
-                + '<div class="bubble"><small>' + esc(c.author) + ' · ' + esc(c.at) + '</small>' + esc(c.text) + '</div></div>';
+            return '<div class="comment task-row"><span class="avatar sm">' + esc(c.author.split(' ').map(function (p) { return p[0]; }).join('').slice(0, 2)) + '</span>'
+                + '<div class="bubble"><small>' + esc(c.author) + ' · ' + esc(c.at) + '</small>' + esc(c.text) + '</div>'
+                + (c.can_delete ? '<button class="icon-btn row-del" type="button" data-comment-del="' + c.id + '" title="Удалить комментарий" aria-label="Удалить комментарий">' + icon('trash', 14) + '</button>' : '')
+                + '</div>';
         }).join('') : '<p class="small faint">Комментариев пока нет.</p>';
     }
     if (taskSheet) {
@@ -685,6 +687,14 @@
                 .then(function (r) { renderChecklist(r.checklist); if (box.checked) U.haptic('success'); }).catch(fail);
         });
         taskSheet.addEventListener('click', function (event) {
+            var del = event.target.closest('[data-comment-del]');
+            if (del) {
+                event.preventDefault();
+                if (!window.confirm('Удалить комментарий?')) return;
+                api('/api/task/' + tid() + '/comment/' + del.getAttribute('data-comment-del') + '/delete', {})
+                    .then(function (t) { renderComments(t.comments); U.haptic('select'); }).catch(fail);
+                return;
+            }
             var rm = event.target.closest('[data-uncheck]');
             if (rm) {
                 event.preventDefault();
