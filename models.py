@@ -405,7 +405,13 @@ class SupportMessage(Base):
 def _migrate() -> None:
     """Новые столбцы в таблицах прошлых версий (create_all их не добавляет)."""
     added = {
-        "members": [("roles", "JSON DEFAULT '[]'"), ("prefs", "JSON DEFAULT '{}'"), ("tags", "JSON")],
+        "members": [
+            ("roles", "JSON DEFAULT '[]'"),
+            ("prefs", "JSON DEFAULT '{}'"),
+            ("tags", "JSON"),
+            ("direction_ids", "JSON DEFAULT '[]'"),
+            ("team_ids", "JSON DEFAULT '[]'"),
+        ],
         "directions": [("position", "INTEGER DEFAULT 0"), ("icon", "VARCHAR(24) DEFAULT ''")],
         "tasks": [("checklist", "JSON DEFAULT '[]'"), ("moved_at", "DATETIME"), ("priority", "INTEGER DEFAULT 2")],
     }
