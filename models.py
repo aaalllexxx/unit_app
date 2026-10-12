@@ -238,7 +238,7 @@ class Notice(Base):
 
 
 class Checkin(Base):
-    """Стендап: что сделал, что дальше, что мешает. Один в день."""
+    """Итоги дня: что сделано, что дальше, что мешает. Одни в день."""
     __tablename__ = "checkins"
     __table_args__ = (UniqueConstraint("member_id", "day"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -281,6 +281,19 @@ class AiUsage(Base):
     day: Mapped[date] = mapped_column(Date, default=date.today)
     requests: Mapped[int] = mapped_column(Integer, default=0)
     tokens: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PushSub(Base):
+    """Подписка устройства на push-уведомления (Web Push)."""
+    __tablename__ = "push_subs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(1000), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200), default="")
+    auth: Mapped[str] = mapped_column(String(100), default="")
+    agent: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_ok: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
 
 
 class TagRule(Base):

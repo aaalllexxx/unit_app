@@ -19,6 +19,7 @@
       <button class="btn btn-ghost" type="button" data-new="link">{{ icon('link', 16) }}Ссылка</button>
       <button class="btn btn-ghost" type="button" data-new="code">{{ icon('code', 16) }}Код</button>
       <label class="btn btn-ghost">{{ icon('upload', 16) }}Файл<input type="file" data-upload hidden multiple></label>
+      <button class="btn btn-ghost" type="button" data-git-open>{{ icon('git', 16) }}GitHub</button>
     </div>
     <div class="row-wrap" style="margin-bottom: 14px; gap: 8px">
       <div class="searchbar" style="margin: 0; flex: 1 1 220px">{{ icon('search', 17) }}<input class="input" type="search" placeholder="Найти на столе" data-desk-search aria-label="Поиск"></div>
@@ -150,6 +151,50 @@
   <div class="sheet-head"><h3 id="shared-title" data-sh-title></h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
   <div class="sheet-body"><div data-sh-body></div></div>
   <div class="sheet-foot"><span class="grow tiny faint" data-sh-meta></span><button class="btn btn-ghost btn-sm" type="button" data-sh-copy>{{ icon('copy', 14) }}Взять себе</button></div>
+</dialog>
+
+<dialog class="sheet wide tall" id="git-sheet" aria-labelledby="git-title">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head">
+    <span class="badge app-badge" style="width: 32px; height: 32px">{{ icon('git', 18) }}</span>
+    <h3 id="git-title" style="margin: 0; font-size: 16px; font-weight: 600">Репозитории GitHub</h3>
+    <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button>
+  </div>
+  <div class="sheet-body stack-sm">
+    <div id="git-unlinked" class="panel inset" hidden>
+      <p class="muted">Привяжите свой GitHub аккаунт, чтобы открывать репозитории и стягивать наработки прямо на рабочий стол мастерской.</p>
+      <div class="fgrid two" style="margin-top: 10px">
+        <label class="field"><span class="label">Логин GitHub</span><input class="input" id="git-login-input" placeholder="например, octocat"></label>
+        <label class="field"><span class="label">Токен (опционально, для приватных)</span><input class="input" id="git-token-input" type="password" placeholder="ghp_…"></label>
+      </div>
+      <button class="btn btn-primary btn-sm" type="button" id="git-link-btn" style="margin-top: 8px">{{ icon('check', 14) }}Привязать аккаунт</button>
+    </div>
+
+    <div id="git-linked" hidden>
+      <div class="row" style="margin-bottom: 12px; gap: 8px; align-items: center">
+        <span class="small faint">Аккаунт: <b id="git-user-label" style="color: var(--ink)"></b></span>
+        <button class="btn btn-quiet btn-xs" type="button" id="git-unlink-btn">Отвязать</button>
+        <span class="grow"></span>
+        <div class="searchbar" style="margin: 0; flex: 0 1 200px">{{ icon('search', 15) }}<input class="input input-sm" type="search" placeholder="Поиск репозиториев" id="git-search" aria-label="Поиск"></div>
+      </div>
+
+      <div class="field" style="margin-bottom: 12px">
+        <span class="label">Привязать наработки к проекту (опционально)</span>
+        <select class="select input-sm" id="git-project-select">
+          <option value="">Без проекта (только на стол)</option>
+          {% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div id="git-repo-list" class="stack-xs" style="max-height: 400px; overflow-y: auto">
+        <div class="empty">Загрузка репозиториев…</div>
+      </div>
+    </div>
+  </div>
+  <div class="sheet-foot">
+    <span class="grow tiny faint">README, открытые задачи и ссылки автоматически стянутся на стол</span>
+    <button class="btn btn-primary btn-sm" type="button" data-sheet-close>Закрыть</button>
+  </div>
 </dialog>
 
 <script type="application/json" id="desk-data">{{ items|tojson }}</script>

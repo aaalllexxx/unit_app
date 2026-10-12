@@ -249,6 +249,8 @@ def notice(member_id: str, text: str, link: str = "", kind: str = "info", key: s
         return
     db().add(M.Notice(member_id=member_id, key=key[:120], kind=kind, text=text[:400], link=link[:300]))
     db().commit()
+    import push
+    push.send_later(member_id, "Лаборатория UNIT", text[:240], link or "/home", key[:60])
 
 
 def notify(member_id: str, subject: str, text: str, link: str = "", kind: str = "info", key: str = "") -> None:
@@ -410,7 +412,7 @@ def home():
                           .order_by(M.DeskItem.updated_at.desc()).limit(4)).all()
     checkin_today = db().scalar(select(M.Checkin).where(M.Checkin.member_id == person.id, M.Checkin.day == date.today()))
     brief = db().get(M.Setting, f"brief:{person.id}:{date.today()}")
-    return render_template("home.html", cards=cards, names=names, customer=False, tasks=tasks, buckets=buckets,
+    return render_template("home.html", **wizard_data(), cards=cards, names=names, customer=False, tasks=tasks, buckets=buckets,
                            per_day=per_day, hours=sum(per_day.values()), top=max(list(per_day.values()) + [8]),
                            online=online, pinned=pinned, checkin=checkin_today, columns=dict(M.TASK_COLUMNS),
                            signals=control.signals_for(person)[:6], brief=brief.value if brief else "",
@@ -465,8 +467,18 @@ def person(mid):
         f = request.form
         member.position = f.get("position", "").strip()[:160]
         member.about = f.get("about", "").strip()[:2000]
-        member.contacts = {"telegram": f.get("telegram", "").strip()[:60], "phone": f.get("phone", "").strip()[:30]}
         member.notify_email = f.get("notify_email") == "1"
+        contacts = dict(member.contacts or {})
+        contacts["telegram"] = f.get("telegram", "").strip()[:60]
+        contacts["phone"] = f.get("phone", "").strip()[:30]
+        if "github" in f:
+            contacts["github"] = f.get("github", "").strip().lstrip("@")[:80]
+        if f.get("github_token"):
+            contacts["github_token"] = f.get("github_token", "").strip()[:150]
+        if f.get("github_unlink") == "1":
+            contacts.pop("github", None)
+            contacts.pop("github_token", None)
+        member.contacts = contacts
         member.skills = _skills_from(f)
         if head:
             member.grade = f.get("grade", "") if f.get("grade", "") in M.GRADES else ""
@@ -598,13 +610,28 @@ def projects():
             abort(403)
         f = request.form
         p = M.Project(title=f.get("title", "").strip()[:200] or "Новый проект", summary=f.get("summary", "").strip()[:400],
-                      starts=date.today(),
+                      about=f.get("about", "").strip()[:5000], customer=f.get("customer", "").strip()[:200],
+                      starts=_date(f.get("starts")) or date.today(), due=_date(f.get("due")),
+                      priority=int(f["priority"]) if f.get("priority") in ("1", "2", "3") else 2,
+                      status=f.get("status") if f.get("status") in M.STATUSES else "active",
+                      repo_url=f.get("repo_url", "").strip()[:300] if f.get("repo_url", "").startswith("https://") else "",
                       direction_id=int(f["direction_id"]) if f.get("direction_id", "").isdigit() else g.me.direction_id,
                       lead_id=g.me.id, closed=f.get("closed") == "1")
         db().add(p)
         db().flush()
         db().add(M.ProjectMember(project_id=p.id, member_id=g.me.id, role="Руководитель проекта"))
+        known = {m.id for m in staff_members()}
+        for mid in dict.fromkeys(f.getlist("team")):
+            if mid in known and mid != g.me.id:
+                db().add(M.ProjectMember(project_id=p.id, member_id=mid, role=""))
+        for i, line in enumerate(x.strip() for x in f.get("parts", "").splitlines()):
+            if line:
+                db().add(M.Part(project_id=p.id, title=line[:200], position=i + 1))
         db().commit()
+        for mid in dict.fromkeys(f.getlist("team")):
+            if mid in known and mid != g.me.id:
+                notify(mid, f"Вас добавили в проект «{p.title}»", "Вы в команде нового проекта.", f"/p/{p.id}")
+        flash("Проект создан", "ok")
         return redirect(url_for("project", pid=p.id))
     rows = visible_projects(g.me)
     status = request.args.get("status")
@@ -618,9 +645,11 @@ def projects():
         info[p.id] = {"percent": pct, "phases": phase_summary(parts), "health": control.project_health(p, pct),
                       "lead": db().get(M.Member, p.lead_id) if p.lead_id else None,
                       "open": db().scalar(select(func.count()).select_from(M.Task).where(
-                          M.Task.project_id == p.id, M.Task.column != "done"))}
-    dirs = {d.id: d for d in db().scalars(select(M.Direction))}
-    return render_template("projects.html", rows=rows, info=info, dirs=dirs, statuses=M.STATUSES, active=status)
+                          M.Task.project_id == p.id, M.Task.column != "done")),
+                      "edit": can_edit(g.me, p)}
+    dirs = {d.id: d for d in db().scalars(select(M.Direction).order_by(M.Direction.position, M.Direction.id))}
+    return render_template("projects.html", rows=rows, info=info, dirs=dirs, statuses=M.STATUSES, active=status,
+                           **wizard_data())
 
 
 @app.route("/p/<int:pid>")
@@ -655,6 +684,58 @@ def project(pid):
                            signals=[] if customer else control.project_signals(p, parts, tasks),
                            health=control.project_health(p, project_percent(parts)),
                            kinds=M.DESK_KINDS, total_hours=sum(h or 0 for _, h in hours))
+
+
+def wizard_data() -> dict:
+    """Для мастера нового проекта: команды и люди."""
+    if not can("project.create"):
+        return {}
+    return {"wizard_dirs": db().scalars(select(M.Direction).order_by(M.Direction.position, M.Direction.id)).all(),
+            "wizard_staff": staff_members()}
+
+
+def _date(raw):
+    try:
+        return date.fromisoformat(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def _delete_project(p) -> None:
+    """Проект и всё, что ему принадлежит: части, задачи, команда, время, журнал, разговоры с ИИ о нём.
+    Наработки из мастерской остаются у авторов — без привязки к проекту."""
+    task_ids = list(db().scalars(select(M.Task.id).where(M.Task.project_id == p.id)))
+    if task_ids:
+        db().execute(M.TaskComment.__table__.delete().where(M.TaskComment.task_id.in_(task_ids)))
+    for model in (M.Task, M.Part, M.ProjectMember, M.TimeEntry, M.Update, M.Timer):
+        db().execute(model.__table__.delete().where(model.project_id == p.id))
+    db().execute(M.AiMessage.__table__.delete().where(M.AiMessage.thread == f"p{p.id}"))
+    for item in db().scalars(select(M.DeskItem).where(M.DeskItem.project_id == p.id)):
+        item.project_id, item.shared = None, False
+    db().delete(p)
+
+
+@app.post("/p/<int:pid>/delete")
+@need("project.delete")
+def project_delete(pid):
+    p = project_or_404(pid)
+    title = p.title
+    _delete_project(p)
+    db().commit()
+    flash(f"Проект «{title}» удалён", "ok")
+    return redirect(_back(request.form.get("next"), "/projects"))
+
+
+@app.post("/p/<int:pid>/status")
+@need("task.work")
+def project_status(pid):
+    """Быстро сменить статус прямо из списка: в работу, на паузу, завершить."""
+    p = project_or_404(pid, edit=True)
+    if request.form.get("status") in M.STATUSES:
+        p.status = request.form["status"]
+        db().commit()
+        flash(f"«{p.title}»: {M.STATUSES[p.status].lower()}", "ok")
+    return redirect(_back(request.form.get("next"), "/projects"))
 
 
 @app.route("/p/<int:pid>/edit", methods=["POST"])
@@ -757,6 +838,15 @@ def task_save(pid):
     task = db().get(M.Task, int(f["task_id"])) if f.get("task_id", "").isdigit() else None
     if task and task.project_id != pid:
         abort(404)
+    if f.get("delete") and task:
+        if not can_delete_task(task, p):
+            abort(403)
+        _delete_task(task)
+        db().commit()
+        flash("Задача удалена", "ok")
+        if request.accept_mimetypes.best == "application/json":
+            return {"ok": True}
+        return redirect(url_for("project", pid=pid) + "#tasks")
     if task is None:
         task = M.Task(project_id=pid, title="", created_by=g.me.id)
         db().add(task)
@@ -797,6 +887,30 @@ def task_save(pid):
     return redirect(url_for("project", pid=pid) + "#tasks")
 
 
+def can_delete_task(task, project) -> bool:
+    """Свою созданную задачу удалить можно всегда, чужую — руководителю проекта или с правом task.delete_any."""
+    return task.created_by == g.me.id or can_edit(g.me, project) or can("task.delete_any")
+
+
+def _delete_task(task) -> None:
+    db().execute(M.TaskComment.__table__.delete().where(M.TaskComment.task_id == task.id))
+    for row in db().scalars(select(M.TimeEntry).where(M.TimeEntry.task_id == task.id)):
+        row.task_id = None
+    db().execute(M.Timer.__table__.delete().where(M.Timer.task_id == task.id))
+    db().delete(task)
+
+
+@app.post("/api/task/<int:tid>/delete")
+@need("task.work")
+def task_delete(tid):
+    task, p = task_or_404(tid)
+    if not can_delete_task(task, p):
+        return {"error": "Эту задачу удалить может её автор или руководитель проекта"}, 403
+    _delete_task(task)
+    db().commit()
+    return {"ok": True}
+
+
 def set_column(task, column: str, project) -> None:
     """Задача переехала в другую колонку: время, отметка «готово», уведомление."""
     task.column = column
@@ -827,6 +941,7 @@ def _task_json(task) -> dict:
         comments.append({"id": c.id, "author": authors[c.author_id], "mine": c.author_id == g.me.id,
                          "at": c.created_at.strftime("%d.%m %H:%M"), "text": c.text})
     return {"id": task.id, "title": task.title, "about": task.about, "column": task.column, "phase": task.phase,
+            "can_delete": can_delete_task(task, db().get(M.Project, task.project_id)),
             "part_id": task.part_id or "", "assignee_id": task.assignee_id or "", "priority": task.priority or 2,
             "estimate": ("%g" % task.estimate) if task.estimate else "", "due": task.due.isoformat() if task.due else "",
             "checklist": task.checklist or [], "comments": comments, "project_id": task.project_id,
@@ -1009,7 +1124,7 @@ def switch_view():
 @app.post("/checkin")
 @need("task.work")
 def checkin():
-    """Стендап: что сделал, что дальше, что мешает. Блокер сразу видят руководители."""
+    """Итоги дня: что сделано, что дальше, что мешает. Помеху сразу видят руководители."""
     f = request.form
     row = db().scalar(select(M.Checkin).where(M.Checkin.member_id == g.me.id, M.Checkin.day == date.today()))
     if row is None:
@@ -1025,7 +1140,7 @@ def checkin():
         for mid in control.leads_of(g.me):
             notify(mid, f"{g.me.name}: мешает работать", row.blockers[:300], f"/pulse#checkins", kind="blocker",
                    key=f"blocker:{g.me.id}:{date.today()}")
-    flash("Стендап записан", "ok")
+    flash("Итоги дня записаны", "ok")
     return redirect(_back(f.get("next"), "/home"))
 
 
@@ -1062,6 +1177,32 @@ def notices_read():
     return {"ok": True}
 
 
+@app.get("/api/push/key")
+@need()
+def push_key():
+    import push
+    if not push.available():
+        return {"error": "Уведомления на этом сервере не настроены"}, 503
+    return {"key": push.public_key()}
+
+
+@app.post("/api/push/subscribe")
+@need()
+def push_subscribe():
+    import push
+    ok = push.subscribe(db(), g.me.id, (request.get_json(silent=True) or {}).get("subscription") or {},
+                        request.headers.get("User-Agent", ""))
+    return ({"ok": True}, 200) if ok else ({"error": "Подписка не принята"}, 400)
+
+
+@app.post("/api/push/unsubscribe")
+@need()
+def push_unsubscribe():
+    import push
+    push.unsubscribe(db(), g.me.id, str((request.get_json(silent=True) or {}).get("endpoint") or ""))
+    return {"ok": True}
+
+
 @app.post("/api/prefs")
 @need()
 def prefs():
@@ -1075,6 +1216,70 @@ def prefs():
     member.prefs = current
     db().commit()
     return {"ok": True}
+
+
+# ─── GitHub интеграция для сотрудников ──────────────────────────────────────
+@app.get("/api/git/status")
+@need()
+def git_status():
+    import git_hub
+    member = db().get(M.Member, g.me.id)
+    return git_hub.get_git_info(member or g.me)
+
+
+@app.post("/api/git/link")
+@need()
+def git_link():
+    import git_hub
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username") or "").strip()
+    token = str(data.get("token") or "").strip()
+    if not username:
+        return {"error": "Укажите имя пользователя GitHub"}, 400
+    git_hub.link_account(db(), g.me.id, username, token)
+    member = db().get(M.Member, g.me.id)
+    return {"ok": True, "info": git_hub.get_git_info(member or g.me)}
+
+
+@app.post("/api/git/unlink")
+@need()
+def git_unlink():
+    import git_hub
+    git_hub.unlink_account(db(), g.me.id)
+    member = db().get(M.Member, g.me.id)
+    return {"ok": True, "info": git_hub.get_git_info(member or g.me)}
+
+
+@app.get("/api/git/repos")
+@need("workshop.use")
+def git_repos():
+    import git_hub
+    member = db().get(M.Member, g.me.id)
+    info = git_hub.get_git_info(member or g.me)
+    if not info["linked"]:
+        return {"error": "GitHub аккаунт не привязан"}, 400
+    token = ((member or g.me).contacts or {}).get("github_token", "")
+    repos = git_hub.list_repos(info["username"], token)
+    return {"repos": repos, "username": info["username"]}
+
+
+@app.post("/api/git/import")
+@need("workshop.use")
+def git_import():
+    import git_hub
+    import desk
+    data = request.get_json(silent=True) or {}
+    repo = str(data.get("repo") or "").strip()
+    if not repo:
+        return {"error": "Укажите репозиторий для импорта"}, 400
+    token = (g.me.contacts or {}).get("github_token", "")
+    details = git_hub.fetch_repo_details(repo, token)
+    if not details:
+        return {"error": "Не удалось загрузить данные репозитория"}, 404
+    pid = desk._project_ok(data.get("project_id"))
+    items = git_hub.import_repo_to_desk(db(), g.me.id, details, pid)
+    names = {p.id: p.title for p in visible_projects(g.me)}
+    return {"ok": True, "created": [desk._item_json(i, names) for i in items]}
 
 
 # ─── Обзор лаборатории ──────────────────────────────────────────────────────

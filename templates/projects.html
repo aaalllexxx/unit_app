@@ -21,7 +21,29 @@
 </div>
 <div class="grid g2">
   {% for p in rows %}{% set i = info[p.id] %}{% set d = dirs.get(p.direction_id) %}
-  <a class="panel proj" href="/p/{{ p.id }}" data-proj data-text="{{ (p.title ~ ' ' ~ p.summary ~ ' ' ~ p.customer)|lower }}">
+  <article class="panel proj" data-proj data-text="{{ (p.title ~ ' ' ~ p.summary ~ ' ' ~ p.customer)|lower }}">
+    <a class="proj-link" href="/p/{{ p.id }}" aria-label="{{ p.title }}"></a>
+    {% if i.edit or can('project.delete') %}
+    <div class="card-menu">
+      <button type="button" data-menu-toggle aria-label="Действия с проектом">{{ icon('more', 18) }}</button>
+      <div class="menu">
+        <a href="/p/{{ p.id }}">{{ icon('arrow', 15) }}Открыть</a>
+        {% if i.edit %}
+        <a href="/p/{{ p.id }}#settings">{{ icon('settings', 15) }}Настройки</a>
+        <hr>
+        {% for k, v in statuses.items() if k != p.status %}
+        <form method="post" action="/p/{{ p.id }}/status"><input type="hidden" name="next" value="{{ request.full_path }}">
+          <button type="submit" name="status" value="{{ k }}">{{ icon({'idea': 'spark', 'active': 'play', 'paused': 'clock', 'done': 'check'}[k], 15) }}{{ {'idea': 'В идеи', 'active': 'В работу', 'paused': 'На паузу', 'done': 'Завершить'}[k] }}</button></form>
+        {% endfor %}
+        {% endif %}
+        {% if can('project.delete') %}
+        <hr>
+        <form method="post" action="/p/{{ p.id }}/delete"><input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="danger" type="submit" data-confirm="Удалить проект «{{ p.title }}» вместе с частями, задачами, временем и журналом? Это не отменить.">{{ icon('trash', 15) }}Удалить проект</button></form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
     <div class="top">
       {% if d %}<span class="chip tone t-{{ d.tone }}">{{ d.title }}</span>{% endif %}
       <span class="chip tone {{ 's-late' if i.health == 'late' else 's-paused' if i.health == 'risk' else 's-' ~ p.status }}"><span class="dot"></span>{{ 'Просрочен' if i.health == 'late' else 'Отстаёт' if i.health == 'risk' else statuses[p.status] }}</span>
@@ -36,21 +58,9 @@
       {% if p.due %}<span class="{{ 'late' if p.due < today and i.percent < 100 }}">{{ icon('calendar', 13) }}до {{ p.due.strftime('%d.%m.%Y') }}</span>{% endif %}
       {% if i.open %}<span>{{ icon('board', 13) }}{{ i.open }} задач</span>{% endif %}
     </div>
-  </a>
+  </article>
   {% else %}<div class="panel empty" style="grid-column: 1 / -1">Проектов пока нет.</div>{% endfor %}
 </div>
 
-{% if can('project.create') %}
-<dialog class="sheet" id="new-project" aria-labelledby="np-title">
-  <div class="sheet-grip"></div>
-  <div class="sheet-head"><h3 id="np-title">Новый проект</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
-  <form method="post" action="/projects" class="sheet-body" id="np-form">
-    <label class="field"><span class="label">Название</span><input class="input" name="title" required autofocus placeholder="Например, «Аудит сайта клиента»"></label>
-    <label class="field"><span class="label">Коротко о цели</span><input class="input" name="summary" placeholder="Что должно получиться"></label>
-    <label class="field"><span class="label">Направление</span><select class="select" name="direction_id">{% for d in dirs.values() %}<option value="{{ d.id }}" {{ 'selected' if d.id == me.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
-    <label class="toggle-row"><span class="grow"><b>Закрытый</b><span>Виден только команде проекта</span></span><span class="switch"><input type="checkbox" name="closed" value="1"><i></i></span></label>
-  </form>
-  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="np-form">{{ icon('plus', 15) }}Создать</button></div>
-</dialog>
-{% endif %}
+{% if can('project.create') %}{% include '_project_wizard.html' %}{% endif %}
 {% endblock %}

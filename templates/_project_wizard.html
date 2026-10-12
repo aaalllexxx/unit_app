@@ -1,0 +1,96 @@
+{# Мастер нового проекта: шаги на весь экран, как регистрация в приложениях.
+   Нужны: wizard_dirs (команды), wizard_staff (люди). Необязательные шаги — «Пропустить». #}
+{% from '_icons.html' import icon, initials, dir_icon %}
+<dialog class="sheet wizard" id="new-project" aria-labelledby="wz-title">
+  <form method="post" action="/projects" class="wizard-form" data-pages>
+    <div class="wizard-top">
+      <div class="wizard-progress"><i data-pages-bar></i></div>
+      <span class="wizard-dots" data-pages-nav></span>
+      <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 20) }}</button>
+    </div>
+
+    <div class="wizard-stage">
+      <section class="wz-page" data-page data-title="Название">
+        <span class="label-mono">Новый проект · 1</span>
+        <h2 id="wz-title">Как назовём проект?</h2>
+        <p class="muted">Коротко и понятно — так его увидят в списке и в уведомлениях.</p>
+        <input class="input wz-big" name="title" required maxlength="200" autofocus placeholder="Например, аудит сайта клиники">
+        <input class="input" name="summary" maxlength="400" placeholder="Что должно получиться — одной фразой (можно позже)">
+      </section>
+
+      <section class="wz-page" data-page data-title="Команда" hidden>
+        <span class="label-mono">Новый проект · 2</span>
+        <h2>Чья это работа?</h2>
+        <p class="muted">Команда лаборатории, которая ведёт проект.</p>
+        <div class="wz-cards">
+          {% for d in wizard_dirs %}
+          <label class="wz-card"><input type="radio" name="direction_id" value="{{ d.id }}" {{ 'checked' if d.id == me.direction_id or (not me.direction_id and loop.first) }}>
+            <span class="badge t-{{ d.tone }}">{{ dir_icon(d, 20) }}</span><b>{{ d.title }}</b></label>
+          {% endfor %}
+        </div>
+        <label class="toggle-row"><span class="grow"><b>Закрытый проект</b><span>Виден только его команде</span></span><span class="switch"><input type="checkbox" name="closed" value="1"><i></i></span></label>
+      </section>
+
+      <section class="wz-page" data-page data-title="Сроки" data-optional hidden>
+        <span class="label-mono">Новый проект · 3</span>
+        <h2>Когда?</h2>
+        <p class="muted">Срок поможет вовремя заметить, что проект отстаёт. Можно пропустить.</p>
+        <div class="fgrid keep">
+          <label class="field"><span class="label">Начало</span><input class="input" type="date" name="starts" value="{{ today.isoformat() }}"></label>
+          <label class="field"><span class="label">Срок</span><input class="input" type="date" name="due"></label>
+        </div>
+        <div class="field"><span class="label">Насколько горит</span>
+          <div class="wz-seg">
+            <label><input type="radio" name="priority" value="1"><span>Срочно</span></label>
+            <label><input type="radio" name="priority" value="2" checked><span>Обычно</span></label>
+            <label><input type="radio" name="priority" value="3"><span>Не горит</span></label>
+          </div></div>
+      </section>
+
+      <section class="wz-page" data-page data-title="Заказчик" data-optional hidden>
+        <span class="label-mono">Новый проект · 4</span>
+        <h2>Для кого и зачем?</h2>
+        <p class="muted">Заказчик и цели — для команды и для ИИ-агента, который поможет разбить работу.</p>
+        <input class="input" name="customer" maxlength="200" placeholder="Заказчик — компания или «свой проект»">
+        <textarea class="textarea" name="about" rows="4" maxlength="5000" data-autosize placeholder="Цели, ограничения, что считать результатом"></textarea>
+      </section>
+
+      <section class="wz-page" data-page data-title="Люди" data-optional hidden>
+        <span class="label-mono">Новый проект · 5</span>
+        <h2>Кто в команде проекта?</h2>
+        <p class="muted">Вы уже в ней как руководитель. Остальных можно добавить и потом.</p>
+        <div class="wz-people">
+          {% for m in wizard_staff if m.id != me.id %}
+          <label class="wz-person"><input type="checkbox" name="team" value="{{ m.id }}"><span class="avatar sm">{{ initials(m.name) }}</span><span class="grow truncate">{{ m.name }}</span>{{ icon('check', 14) }}</label>
+          {% else %}<p class="small faint">Других сотрудников пока нет.</p>{% endfor %}
+        </div>
+      </section>
+
+      <section class="wz-page" data-page data-title="Части" data-optional hidden>
+        <span class="label-mono">Новый проект · 6</span>
+        <h2>Из каких частей он состоит?</h2>
+        <p class="muted">Модули, сервисы, исследования — по строке. У каждой части будет свой этап и процент готовности.</p>
+        <textarea class="textarea" name="parts" rows="5" data-autosize placeholder="Бэкенд и API&#10;Мобильное приложение&#10;Проверка безопасности"></textarea>
+        <div class="wz-suggest">
+          {% for s in ['Бэкенд и API', 'Веб-интерфейс', 'Мобильное приложение', 'Модель и данные', 'Аудит безопасности', 'Документация'] %}
+          <button class="tag tag-btn" type="button" data-append="parts" data-value="{{ s }}">{{ icon('plus', 11) }}{{ s }}</button>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="wz-page wz-final" data-page data-title="Готово" hidden>
+        <span class="wz-done-mark">{{ icon('check', 28) }}</span>
+        <h2>Всё готово</h2>
+        <p class="muted">Проект появится в списке, а команда получит уведомления. Всё можно поменять в настройках проекта.</p>
+      </section>
+    </div>
+
+    <div class="wizard-foot">
+      <button class="btn btn-ghost" type="button" data-page-prev>{{ icon('back', 15) }}Назад</button>
+      <span class="grow"></span>
+      <button class="btn btn-quiet" type="button" data-page-skip>Пропустить</button>
+      <button class="btn btn-primary" type="button" data-page-next>Далее{{ icon('arrow', 15) }}</button>
+      <button class="btn btn-accent" type="submit" data-page-done hidden>{{ icon('plus', 15) }}Создать проект</button>
+    </div>
+  </form>
+</dialog>

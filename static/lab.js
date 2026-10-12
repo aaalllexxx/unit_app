@@ -443,6 +443,7 @@
             if (ai) ai.setAttribute('data-ask', 'Разбей задачу [задача ' + t.id + '] «' + t.title + '» на конкретные шаги и предложи их чек-листом или подзадачами.');
             renderChecklist(t.checklist);
             renderComments(t.comments);
+            document.dispatchEvent(new CustomEvent('task:loaded', { detail: t }));
             U.openSheet(taskSheet);
             history.replaceState(null, '', location.pathname + '?task=' + t.id + location.hash);
         }).catch(fail);
@@ -637,5 +638,125 @@
         var box = document.querySelector('.chat-box [data-chat]');
         if (!box || !window.confirm('Очистить разговор?')) return;
         window.LAB.api('/api/ai/clear', { thread: box.getAttribute('data-thread') || 'me' }).then(function () { location.reload(); });
+    });
+})();
+
+/* Страницы внутри окна: мастер нового проекта и настройки проекта.
+   [data-pages] — контейнер; внутри [data-page] (data-title — подпись, data-optional — можно пропустить),
+   кнопки [data-page-next], [data-page-prev], [data-page-skip]; [data-pages-nav] — точки или вкладки,
+   [data-pages-bar] — полоса прогресса. Переход вперёд проверяет обязательные поля страницы. */
+(function () {
+    'use strict';
+    var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function setup(box) {
+        var pages = $$('[data-page]', box), nav = box.querySelector('[data-pages-nav]'), bar = box.querySelector('[data-pages-bar]');
+        var at = 0, tabs = box.hasAttribute('data-pages-tabs');
+        if (!pages.length) return;
+        if (nav) {
+            nav.innerHTML = pages.map(function (p, i) {
+                return tabs ? '<button type="button" class="tab-btn" data-go="' + i + '">' + (p.getAttribute('data-title') || i + 1) + '</button>'
+                            : '<i data-go="' + i + '" title="' + (p.getAttribute('data-title') || '') + '"></i>';
+            }).join('');
+        }
+        function show(next, dir) {
+            next = Math.max(0, Math.min(pages.length - 1, next));
+            var from = pages[at], to = pages[next];
+            if (from !== to) {
+                from.hidden = true;
+                to.hidden = false;
+                if (!reduce) {
+                    to.classList.remove('pg-in-left', 'pg-in-right');
+                    void to.offsetWidth;
+                    to.classList.add(dir < 0 ? 'pg-in-left' : 'pg-in-right');
+                }
+            } else {
+                pages.forEach(function (p, i) { p.hidden = i !== next; });
+            }
+            at = next;
+            box.setAttribute('data-at', String(at));
+            if (nav) $$('[data-go]', nav).forEach(function (el, i) { el.classList.toggle('on', i === at); el.classList.toggle('done', i < at); });
+            if (bar) bar.style.width = Math.round((at + 1) / pages.length * 100) + '%';
+            $$('[data-page-prev]', box).forEach(function (b) { b.hidden = at === 0; });
+            $$('[data-page-next]', box).forEach(function (b) { b.hidden = at === pages.length - 1; });
+            $$('[data-page-done]', box).forEach(function (b) { b.hidden = !tabs && at !== pages.length - 1; });
+            $$('[data-page-skip]', box).forEach(function (b) { b.hidden = !to.hasAttribute('data-optional'); });
+            var focus = to.querySelector('[autofocus], input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea');
+            if (focus && !tabs && window.matchMedia('(pointer: fine)').matches) setTimeout(function () { focus.focus(); }, reduce ? 0 : 180);
+            box.dispatchEvent(new CustomEvent('pages:show', { detail: { at: at, page: to } }));
+        }
+        function valid() {
+            var bad = $$('input, select, textarea', pages[at]).filter(function (el) { return !el.checkValidity(); });
+            if (bad.length) { bad[0].reportValidity(); if (window.UNIT) window.UNIT.haptic('error'); return false; }
+            return true;
+        }
+        box.addEventListener('click', function (event) {
+            var t = event.target.closest('[data-page-next], [data-page-prev], [data-page-skip], [data-go]');
+            if (!t) return;
+            event.preventDefault();
+            if (t.hasAttribute('data-page-prev')) show(at - 1, -1);
+            else if (t.hasAttribute('data-page-skip')) show(at + 1, 1);
+            else if (t.hasAttribute('data-go')) { var to = Number(t.getAttribute('data-go')); if (tabs || to <= at || valid()) show(to, to < at ? -1 : 1); }
+            else if (valid()) show(at + 1, 1);
+            if (window.UNIT) window.UNIT.haptic('select');
+        });
+        box.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' || tabs || event.target.tagName === 'TEXTAREA' || event.target.type === 'submit') return;
+            if (at < pages.length - 1) { event.preventDefault(); if (valid()) show(at + 1, 1); }
+        });
+        // Свайп по странице на телефоне — листать
+        var sx = 0, sy = 0;
+        box.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+        box.addEventListener('touchend', function (e) {
+            var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+            if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.7 || e.target.closest('input, textarea, select, .icon-pick')) return;
+            if (dx < 0 && at < pages.length - 1 && (tabs || valid())) show(at + 1, 1);
+            else if (dx > 0 && at > 0) show(at - 1, -1);
+        }, { passive: true });
+        var sheet = box.closest('dialog');
+        if (sheet) sheet.addEventListener('close', function () { if (!tabs) setTimeout(function () { show(0, -1); }, 300); });
+        show(0, 1);
+        box.pagesShow = show;
+    }
+    $$('[data-pages]').forEach(setup);
+})();
+
+/* Меню «⋯» у карточек (проекты): открыть/закрыть, клик мимо — закрыть */
+(function () {
+    'use strict';
+    document.addEventListener('click', function (event) {
+        var toggle = event.target.closest('[data-menu-toggle]');
+        document.querySelectorAll('.card-menu[open]').forEach(function (m) { if (!toggle || m !== toggle.closest('.card-menu')) m.removeAttribute('open'); });
+        if (toggle) { event.preventDefault(); event.stopPropagation(); var m = toggle.closest('.card-menu'); if (m.hasAttribute('open')) m.removeAttribute('open'); else m.setAttribute('open', ''); }
+    });
+})();
+
+/* Подсказка-тег дописывает строку в поле (data-append="поле" data-value="…") */
+(function () {
+    'use strict';
+    document.addEventListener('click', function (event) {
+        var b = event.target.closest('[data-append]');
+        if (!b) return;
+        var form = b.closest('form');
+        var field = form && form.querySelector('[name="' + b.getAttribute('data-append') + '"]');
+        if (!field) return;
+        var lines = field.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+        if (lines.indexOf(b.getAttribute('data-value')) < 0) lines.push(b.getAttribute('data-value'));
+        field.value = lines.join('\n');
+        field.dispatchEvent(new Event('input'));
+        b.classList.add('used');
+        if (window.UNIT) window.UNIT.haptic('select');
+    });
+})();
+
+/* Проект: #settings в адресе открывает настройки; в окне задачи — кнопка «Удалить», если можно */
+(function () {
+    'use strict';
+    if (location.hash === '#settings' && document.getElementById('settings-sheet') && window.UNIT) {
+        setTimeout(function () { window.UNIT.openSheet('settings-sheet'); }, 80);
+    }
+    document.addEventListener('task:loaded', function (event) {
+        var b = document.querySelector('[data-task-delete]');
+        if (b) b.hidden = !(event.detail && event.detail.can_delete);
     });
 })();

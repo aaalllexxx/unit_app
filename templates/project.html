@@ -56,7 +56,7 @@
 <section data-pane="parts">
   <div class="panel">
     {% for part in parts %}{% set pp = part_percent(part) %}{% set cur = (all_phases|map(attribute=0)|list).index(part.phase) %}
-    <div class="part">
+    <div class="part {{ 'part-tap' if member }}" {% if member %}data-sheet-open="part-sheet" data-fill='{{ {"part_id": part.id, "title": part.title, "phase": part.phase, "phase_progress": part.phase_progress, "weight": "%g" % part.weight, "owner_id": part.owner_id or "", "note": part.note, "_title": part.title}|tojson }}'{% endif %}>
       <div class="stack-sm" style="gap: 8px">
         <div class="row-wrap" style="gap: 8px"><h3>{{ part.title }}</h3>
           <span class="chip tone s-idea">{{ phase_name[part.phase] }} · {{ part.phase_progress }}%</span></div>
@@ -66,7 +66,7 @@
         </div>
         {% if part.note %}<p class="small muted">{{ part.note }}</p>{% endif %}
         {% if member %}
-        <button class="btn btn-ghost btn-sm" type="button" style="align-self: flex-start" data-sheet-open="part-sheet"
+        <button class="btn btn-ghost btn-sm part-edit" type="button" style="align-self: flex-start" data-sheet-open="part-sheet"
                 data-fill='{{ {"part_id": part.id, "title": part.title, "phase": part.phase, "phase_progress": part.phase_progress, "weight": "%g" % part.weight, "owner_id": part.owner_id or "", "note": part.note, "_title": part.title}|tojson }}'>{{ icon('pen', 13) }}Обновить прогресс</button>
         {% endif %}
       </div>
@@ -134,6 +134,10 @@
       <div class="grow"><a class="t" href="?task={{ t.id }}#tasks" data-open-task="{{ t.id }}">{{ t.title }}</a>
         <span class="meta">{% if t.assignee_id and people.get(t.assignee_id) %}{{ people[t.assignee_id].name }}{% else %}без исполнителя{% endif %}{% if t.estimate %} · {{ '%g' % t.estimate }} ч{% endif %}</span></div>
       {% if t.due %}<span class="mono tiny {{ 'late' if t.due < today and t.column != 'done' else 'faint' }}">{{ t.due.strftime('%d.%m') }}</span>{% endif %}
+      {% if t.created_by == me.id or editable or can('task.delete_any') %}
+      <form method="post" action="/p/{{ p.id }}/task"><input type="hidden" name="task_id" value="{{ t.id }}"><input type="hidden" name="delete" value="1">
+        <button class="icon-btn row-del" type="submit" title="Удалить" aria-label="Удалить «{{ t.title }}»" data-confirm="Удалить задачу «{{ t.title }}»?">{{ icon('trash', 15) }}</button></form>
+      {% endif %}
     </div>
     {% endfor %}{% endif %}{% endfor %}
     {% if not tasks %}<div class="empty">Задач пока нет.</div>{% endif %}
@@ -155,7 +159,7 @@
       </div>
       {% if editable %}
       <form method="post" action="/p/{{ p.id }}/team" class="panel-foot stack-sm">
-        <select class="select" name="member_id" required><option value="">Добавить человека или заказчика</option>{% for m in staff if m.id not in team_people %}<option value="{{ m.id }}">{{ m.name }}{% if m.role == 'customer' %} (заказчик{% if m.company %}, {{ m.company }}{% endif %}){% endif %}</option>{% endfor %}</select>
+        <select class="select" name="member_id" required><option value="">Добавить человека или заказчика</option>{% for m in staff if m.id not in team_people %}<option value="{{ m.id }}">{{ m.name }}{% if m.company %} ({{ m.company }}){% endif %}</option>{% endfor %}</select>
         <div class="row" style="gap: 8px"><input class="input" name="role" placeholder="Роль в проекте: бэкенд, аналитик…" style="flex: 1"><button class="btn btn-ghost" type="submit">{{ icon('plus', 15) }}Добавить</button></div>
       </form>
       {% endif %}
@@ -230,7 +234,7 @@
       <textarea class="textarea" name="about" data-autosize rows="3" placeholder="Описание: что сделать и как понять, что готово"></textarea>
       <div class="fgrid three">
         <label class="field"><span class="label">Колонка</span><select class="select" name="column">{% for k, n in columns %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
-        <label class="field"><span class="label">Исполнитель</span><select class="select" name="assignee_id"><option value="">—</option>{% for tm in team %}{% if people.get(tm.member_id) and people[tm.member_id].role != 'customer' %}<option value="{{ tm.member_id }}">{{ people[tm.member_id].name }}</option>{% endif %}{% endfor %}</select></label>
+        <label class="field"><span class="label">Исполнитель</span><select class="select" name="assignee_id"><option value="">—</option>{% for tm in team %}{% if people.get(tm.member_id) %}<option value="{{ tm.member_id }}">{{ people[tm.member_id].name }}</option>{% endif %}{% endfor %}</select></label>
         <label class="field"><span class="label">Срок</span><input class="input" type="date" name="due"></label>
         <label class="field"><span class="label">Приоритет</span><select class="select" name="priority"><option value="1">Срочно</option><option value="2">Обычный</option><option value="3">Когда-нибудь</option></select></label>
         <label class="field"><span class="label">Часть</span><select class="select" name="part_id"><option value="">—</option>{% for part in parts %}<option value="{{ part.id }}">{{ part.title }}</option>{% endfor %}</select></label>
@@ -256,9 +260,11 @@
     {% if not running %}<form method="post" action="/timer"><input type="hidden" name="action" value="start"><input type="hidden" name="task_id" data-timer-task><input type="hidden" name="next" value="/p/{{ p.id }}#tasks">
       <button class="btn btn-ghost btn-sm" type="submit">{{ icon('play', 14) }}Таймер</button></form>{% endif %}
     {% if ai_on %}<button class="btn btn-ghost btn-sm" type="button" data-ai-open data-task-ai data-ask="">{{ icon('spark', 14) }}Разбить на шаги</button>{% endif %}
+    <button class="btn btn-quiet btn-icon btn-sm" type="submit" form="task-form" name="delete" value="1" data-task-delete hidden
+            title="Удалить задачу" aria-label="Удалить задачу" data-confirm="Удалить задачу вместе с чек-листом и обсуждением?">{{ icon('trash', 15) }}</button>
     <span class="grow"></span>
     <button class="btn btn-ghost btn-sm" type="button" data-sheet-close>Закрыть</button>
-    <button class="btn btn-primary btn-sm" type="submit" form="task-form">{{ icon('check', 14) }}Сохранить</button>
+    <button class="btn btn-primary btn-sm" type="submit" form="task-form" formnovalidate>{{ icon('check', 14) }}Сохранить</button>
   </div>
 </dialog>
 
@@ -298,29 +304,51 @@
 <dialog class="sheet wide" id="settings-sheet" aria-labelledby="set-title">
   <div class="sheet-grip"></div>
   <div class="sheet-head"><h3 id="set-title">Настройки проекта</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
-  <form method="post" action="/p/{{ p.id }}/edit" class="sheet-body" id="settings-form">
-    <div class="fgrid">
-      <label class="field full"><span class="label">Название</span><input class="input" name="title" value="{{ p.title }}"></label>
-      <label class="field full"><span class="label">Коротко</span><input class="input" name="summary" value="{{ p.summary }}"></label>
-      <label class="field full"><span class="label">Описание и цели</span><textarea class="textarea" name="about" data-autosize rows="3">{{ p.about }}</textarea></label>
-    </div>
-    <div class="fgrid three">
-      <label class="field"><span class="label">Статус</span><select class="select" name="status">{% for k, v in statuses.items() %}<option value="{{ k }}" {{ 'selected' if k == p.status }}>{{ v }}</option>{% endfor %}</select></label>
-      <label class="field"><span class="label">Приоритет</span><select class="select" name="priority">{% for k, v in [(1, 'Высокий'), (2, 'Обычный'), (3, 'Низкий')] %}<option value="{{ k }}" {{ 'selected' if k == p.priority }}>{{ v }}</option>{% endfor %}</select></label>
-      <label class="field"><span class="label">Направление</span><select class="select" name="direction_id">{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == p.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
-      <label class="field"><span class="label">Начало</span><input class="input" type="date" name="starts" value="{{ p.starts or '' }}"></label>
-      <label class="field"><span class="label">Срок</span><input class="input" type="date" name="due" value="{{ p.due or '' }}"></label>
-      <label class="field"><span class="label">Заказчик</span><input class="input" name="customer" value="{{ p.customer }}"></label>
-    </div>
-    <label class="field"><span class="label">Репозиторий</span><input class="input" name="repo_url" value="{{ p.repo_url }}" inputmode="url" placeholder="https://git.labunit.ru/…"></label>
-    <label class="toggle-row"><span class="grow"><b>Закрытый</b><span>Виден только команде проекта</span></span><span class="switch"><input type="checkbox" name="closed" value="1" {{ 'checked' if p.closed }}><i></i></span></label>
-    <div class="fieldset">
-      <label class="toggle-row" style="padding: 0"><span class="grow"><b>Показывать на лендинге</b><span>Своё название и описание для внешних, без внутренних подробностей</span></span><span class="switch"><input type="checkbox" name="public" value="1" {{ 'checked' if p.public }}><i></i></span></label>
-      <input class="input" name="public_title" value="{{ p.public_title }}" placeholder="Название для лендинга">
-      <textarea class="textarea" name="public_text" data-autosize rows="2" placeholder="Описание для лендинга">{{ p.public_text }}</textarea>
-    </div>
+  <form method="post" action="/p/{{ p.id }}/edit" class="sheet-body" id="settings-form" data-pages data-pages-tabs>
+    <div class="pages-tabs" data-pages-nav></div>
+    <section data-page data-title="Основное" class="stack-sm" style="gap: 14px">
+      <label class="field"><span class="label">Название</span><input class="input" name="title" value="{{ p.title }}" required></label>
+      <label class="field"><span class="label">Коротко</span><input class="input" name="summary" value="{{ p.summary }}" placeholder="Что должно получиться — одной фразой"></label>
+      <label class="field"><span class="label">Описание и цели</span><textarea class="textarea" name="about" data-autosize rows="4">{{ p.about }}</textarea></label>
+    </section>
+    <section data-page data-title="Сроки и команда" class="stack-sm" style="gap: 14px" hidden>
+      <div class="fgrid">
+        <label class="field"><span class="label">Статус</span><select class="select" name="status">{% for k, v in statuses.items() %}<option value="{{ k }}" {{ 'selected' if k == p.status }}>{{ v }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Приоритет</span><select class="select" name="priority">{% for k, v in [(1, 'Высокий'), (2, 'Обычный'), (3, 'Низкий')] %}<option value="{{ k }}" {{ 'selected' if k == p.priority }}>{{ v }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Начало</span><input class="input" type="date" name="starts" value="{{ p.starts or '' }}"></label>
+        <label class="field"><span class="label">Срок</span><input class="input" type="date" name="due" value="{{ p.due or '' }}"></label>
+        <label class="field"><span class="label">Команда</span><select class="select" name="direction_id">{% for d in dirs %}<option value="{{ d.id }}" {{ 'selected' if d.id == p.direction_id }}>{{ d.title }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="label">Заказчик</span><input class="input" name="customer" value="{{ p.customer }}"></label>
+      </div>
+    </section>
+    <section data-page data-title="Доступ" class="stack-sm" hidden>
+      <label class="toggle-row"><span class="grow"><b>Закрытый</b><span>Виден только команде проекта</span></span><span class="switch"><input type="checkbox" name="closed" value="1" {{ 'checked' if p.closed }}><i></i></span></label>
+      {% if can('project.publish') %}
+      <div class="fieldset">
+        <label class="toggle-row" style="padding: 0"><span class="grow"><b>Показывать на лендинге</b><span>Своё название и описание для внешних, без внутренних подробностей</span></span><span class="switch"><input type="checkbox" name="public" value="1" {{ 'checked' if p.public }}><i></i></span></label>
+        <input class="input" name="public_title" value="{{ p.public_title }}" placeholder="Название для лендинга">
+        <textarea class="textarea" name="public_text" data-autosize rows="2" placeholder="Описание для лендинга">{{ p.public_text }}</textarea>
+      </div>
+      {% else %}
+      <input type="hidden" name="public" value="{{ '1' if p.public }}"><input type="hidden" name="public_title" value="{{ p.public_title }}"><input type="hidden" name="public_text" value="{{ p.public_text }}">
+      {% endif %}
+    </section>
+    <section data-page data-title="Репозиторий" class="stack-sm" style="gap: 14px" hidden>
+      <label class="field"><span class="label">Адрес репозитория</span><input class="input" name="repo_url" value="{{ p.repo_url }}" inputmode="url" placeholder="https://github.com/…">
+        <span class="hint">Откроется в мастерской проекта: файлы, коммиты и задачи из репозитория.</span></label>
+    </section>
+    {% if can('project.delete') %}
+    <section data-page data-title="Удаление" hidden>
+      <div class="danger-zone">
+        <b>Удалить проект</b>
+        <span class="small muted">Пропадут части, задачи с обсуждениями, записи времени и журнал. Наработки в мастерской останутся у авторов. Отменить нельзя.</span>
+        <button class="btn btn-danger" type="submit" form="delete-form" style="align-self: flex-start" data-confirm="Удалить проект «{{ p.title }}» насовсем?">{{ icon('trash', 15) }}Удалить проект</button>
+      </div>
+    </section>
+    {% endif %}
   </form>
-  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="settings-form">{{ icon('check', 15) }}Сохранить</button></div>
+  <form method="post" action="/p/{{ p.id }}/delete" id="delete-form" hidden></form>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><span class="grow"></span><button class="btn btn-primary" type="submit" form="settings-form">{{ icon('check', 15) }}Сохранить</button></div>
 </dialog>
 {% endif %}
 {% endblock %}

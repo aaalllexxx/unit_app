@@ -45,7 +45,7 @@
     </div>
     {% if checkins %}
     <div class="panel">
-      <div class="panel-head"><h3>Стендапы</h3></div>
+      <div class="panel-head"><h3>Итоги дня</h3></div>
       <div class="rows">{% for c in checkins %}
         <div class="r" style="align-items: flex-start"><span class="mono tiny faint" style="width: 42px; padding-top: 2px">{{ c.day.strftime('%d.%m') }}</span>
           <div class="grow stack-xs small">{% if c.done %}<span><b>Сделано:</b> {{ c.done }}</span>{% endif %}{% if c.plan %}<span class="muted"><b>Дальше:</b> {{ c.plan }}</span>{% endif %}{% if c.blockers %}<span style="color: var(--danger)"><b>Мешает:</b> {{ c.blockers }}</span>{% endif %}</div>
@@ -69,6 +69,7 @@
         <dt>Почта</dt><dd>{% if m.email %}<a href="mailto:{{ m.email }}" style="color: var(--accent)">{{ m.email }}</a>{% else %}—{% endif %}</dd>
         <dt>Telegram</dt><dd>{% if m.contacts.get('telegram') %}<a href="https://t.me/{{ m.contacts.get('telegram')|replace('@', '') }}" target="_blank" rel="noopener" style="color: var(--accent)">{{ m.contacts.get('telegram') }}</a>{% else %}—{% endif %}</dd>
         <dt>Телефон</dt><dd>{% if m.contacts.get('phone') %}<a href="tel:{{ m.contacts.get('phone') }}" style="color: var(--accent)">{{ m.contacts.get('phone') }}</a>{% else %}—{% endif %}</dd>
+        <dt>GitHub</dt><dd>{% if m.contacts.get('github') %}<a href="https://github.com/{{ m.contacts.get('github')|replace('@', '') }}" target="_blank" rel="noopener" style="color: var(--accent)">github.com/{{ m.contacts.get('github') }}</a>{% if own %}<form method="post" style="display: inline; margin-left: 8px"><input type="hidden" name="github_unlink" value="1"><button class="btn btn-quiet btn-xs" type="submit">Отвязать</button></form>{% endif %}{% else %}—{% if own %}<button class="btn btn-quiet btn-xs" type="button" data-sheet-open="profile-sheet" style="margin-left: 8px">Привязать</button>{% endif %}{% endif %}</dd>
       </dl>
     </div>
     <div class="panel">
@@ -86,11 +87,13 @@
   <div class="sheet-grip"></div>
   <div class="sheet-head"><h3 id="pf-title">{{ 'Ваш профиль' if own else 'Профиль · ' ~ m.name }}</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
   <form method="post" class="sheet-body" id="profile-form">
-    <div class="fgrid three profile-row">
+    <div class="fgrid two profile-row">
       <label class="field"><span class="label">Должность</span><input class="input" name="position" value="{{ m.position }}" placeholder="Бэкенд-разработчик" autofocus></label>
       <label class="field"><span class="label">Telegram</span><input class="input" name="telegram" value="{{ m.contacts.get('telegram', '') }}" placeholder="@ник"></label>
       <label class="field"><span class="label">Телефон</span><input class="input" name="phone" value="{{ m.contacts.get('phone', '') }}" type="tel" inputmode="tel" placeholder="+7…"></label>
+      <label class="field"><span class="label">GitHub</span><input class="input" name="github" value="{{ m.contacts.get('github', '') }}" placeholder="Логин (например, octocat)"></label>
     </div>
+    <label class="field"><span class="label">GitHub токен (опционально, для приватных репозиториев)</span><input class="input" type="password" name="github_token" placeholder="ghp_…"></label>
     <label class="field"><span class="label">О себе</span><textarea class="textarea" name="about" data-autosize rows="2" placeholder="Чем занимаетесь и в чём сильны">{{ m.about }}</textarea></label>
     <div class="field"><span class="label">Навыки</span><span class="hint">Введите навык и Enter; уровень — точками от 1 до 5</span>
       <div class="skills-edit" data-skills>

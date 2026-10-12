@@ -300,6 +300,111 @@
         }).catch(fail);
     });
 
+    // GitHub интеграция
+    var gitSheet = $('#git-sheet');
+    var gitReposCache = [];
+
+    function renderGitRepos(repos) {
+        var list = $('#git-repo-list');
+        if (!list) return;
+        var q = ($('#git-search') && $('#git-search').value || '').trim().toLowerCase();
+        var filtered = (repos || []).filter(function (r) {
+            return !q || r.name.toLowerCase().indexOf(q) >= 0 || (r.description && r.description.toLowerCase().indexOf(q) >= 0);
+        });
+        if (!filtered.length) {
+            list.innerHTML = '<div class="empty">Репозиториев не найдено.</div>';
+            return;
+        }
+        list.innerHTML = filtered.map(function (r) {
+            return '<div class="inset row" style="padding: 10px 14px; gap: 10px; align-items: flex-start">'
+                + '<span class="badge app-badge" style="width: 28px; height: 28px; margin-top: 2px">' + icon('git', 15) + '</span>'
+                + '<div class="grow stack-xs" style="gap: 2px">'
+                + '<div class="row" style="gap: 6px; align-items: center"><b class="small strong">' + esc(r.name) + '</b>'
+                + (r.language ? '<span class="chip tiny">' + esc(r.language) + '</span>' : '')
+                + (r.stars ? '<span class="tiny faint">★ ' + r.stars + '</span>' : '')
+                + (r.private ? '<span class="chip tiny tone s-paused">приватный</span>' : '') + '</div>'
+                + (r.description ? '<span class="tiny muted">' + esc(r.description) + '</span>' : '')
+                + '</div>'
+                + '<button class="btn btn-ghost btn-sm" type="button" data-git-import="' + esc(r.full_name) + '">'
+                + icon('down', 13) + 'Стянуть на стол</button>'
+                + '</div>';
+        }).join('');
+    }
+
+    function loadGit() {
+        if (!gitSheet) return;
+        LAB.api('/api/git/status').then(function (status) {
+            if (status.linked) {
+                $('#git-unlinked').hidden = true;
+                $('#git-linked').hidden = false;
+                $('#git-user-label').textContent = status.username;
+                $('#git-repo-list').innerHTML = '<div class="empty">Загрузка репозиториев…</div>';
+                LAB.api('/api/git/repos').then(function (res) {
+                    gitReposCache = res.repos || [];
+                    renderGitRepos(gitReposCache);
+                }).catch(function (err) {
+                    $('#git-repo-list').innerHTML = '<div class="empty" style="color: var(--danger)">Не удалось загрузить репозитории: ' + esc(err.message) + '</div>';
+                });
+            } else {
+                $('#git-unlinked').hidden = false;
+                $('#git-linked').hidden = true;
+            }
+            U.openSheet(gitSheet);
+        }).catch(fail);
+    }
+
+    var gitBtn = $('[data-git-open]');
+    if (gitBtn) gitBtn.addEventListener('click', loadGit);
+
+    var gitSearch = $('#git-search');
+    if (gitSearch) gitSearch.addEventListener('input', function () {
+        renderGitRepos(gitReposCache);
+    });
+
+    var gitLinkBtn = $('#git-link-btn');
+    if (gitLinkBtn) gitLinkBtn.addEventListener('click', function () {
+        var user = ($('#git-login-input').value || '').trim();
+        var tok = ($('#git-token-input').value || '').trim();
+        if (!user) { U.toast('Укажите логин GitHub', 'err'); return; }
+        LAB.api('/api/git/link', { username: user, token: tok }).then(function () {
+            U.toast('GitHub аккаунт привязан', 'ok');
+            U.haptic('success');
+            loadGit();
+        }).catch(fail);
+    });
+
+    var gitUnlinkBtn = $('#git-unlink-btn');
+    if (gitUnlinkBtn) gitUnlinkBtn.addEventListener('click', function () {
+        LAB.api('/api/git/unlink', {}).then(function () {
+            U.toast('GitHub аккаунт отвязан', 'ok');
+            U.haptic('success');
+            loadGit();
+        }).catch(fail);
+    });
+
+    if (gitSheet) {
+        gitSheet.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-git-import]');
+            if (!btn) return;
+            var repo = btn.getAttribute('data-git-import');
+            var pid = $('#git-project-select') ? $('#git-project-select').value : '';
+            btn.disabled = true;
+            btn.textContent = 'Стягивание…';
+            LAB.api('/api/git/import', { repo: repo, project_id: pid }).then(function (res) {
+                (res.created || []).forEach(function (it) {
+                    replace(it);
+                });
+                U.closeSheet(gitSheet);
+                U.toast('Наработки из ' + repo + ' стянуты на стол', 'ok');
+                U.haptic('success');
+            }).catch(function (err) {
+                btn.disabled = false;
+                btn.innerHTML = icon('down', 13) + 'Стянуть на стол';
+                fail(err);
+            });
+        });
+    }
+
     draw();
     var wanted = new URLSearchParams(location.search).get('open');
     if (wanted) {

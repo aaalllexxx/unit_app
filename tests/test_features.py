@@ -240,10 +240,6 @@ class ProfileTest(unittest.TestCase):
         self.assertIn('id="profile-sheet"', c.get("/people/m1").get_data(as_text=True))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class UnitIdSyncTest(unittest.TestCase):
     def test_first_pull_pushes_old_tags_then_syncs(self):
         import unitid
@@ -269,3 +265,98 @@ class UnitIdSyncTest(unittest.TestCase):
                 self.assertIsNone(s.get(M.Member, "stranger"))                  # ученику школы тут делать нечего
         finally:
             unitid._call, unitid.push_tags, unitid.CLIENT_ID, unitid.CLIENT_SECRET = saved
+
+
+class ProjectFlowTest(unittest.TestCase):
+    def test_wizard_create_status_and_delete(self):
+        h = T.client("h")
+        r = h.post("/projects", data={"title": "Мастер", "summary": "Проверка", "direction_id": "2", "due": "2026-12-31",
+                                      "priority": "1", "customer": "Свой", "team": ["m1"],
+                                      "parts": "Бэкенд\nФронтенд\n"}, headers=H)
+        pid = int(r.headers["Location"].rsplit("/", 1)[1])
+        with M.Session() as s:
+            p = s.get(M.Project, pid)
+            self.assertEqual((str(p.due), p.priority, p.customer), ("2026-12-31", 1, "Свой"))
+            self.assertEqual(s.query(M.Part).filter_by(project_id=pid).count(), 2)
+            self.assertTrue(s.query(M.ProjectMember).filter_by(project_id=pid, member_id="m1").count())
+        page = h.get(f"/p/{pid}").get_data(as_text=True)
+        self.assertIn("data-pages-tabs", page)
+        h.post(f"/p/{pid}/status", data={"status": "done"}, headers=H)
+        with M.Session() as s:
+            self.assertEqual(s.get(M.Project, pid).status, "done")
+        # Задачу удаляет автор, чужую — нет (у сотрудника нет права task.delete_any)
+        m1 = T.client("m1")
+        h.post(f"/p/{pid}/task", data={"title": "Чужая"}, headers=H)
+        m1.post(f"/p/{pid}/task", data={"title": "Своя"}, headers=H)
+        with M.Session() as s:
+            own = s.query(M.Task).filter_by(title="Своя").one().id
+            other = s.query(M.Task).filter_by(title="Чужая").one().id
+        self.assertEqual(m1.post(f"/api/task/{other}/delete", headers=H).status_code, 403)
+        self.assertEqual(m1.post(f"/api/task/{own}/delete", headers=H).get_json(), {"ok": True})
+        self.assertEqual(m1.post(f"/p/{pid}/delete", headers=H).status_code, 403)              # нет права удалять проекты
+        h.post(f"/p/{pid}/delete", headers=H)
+        with M.Session() as s:
+            self.assertIsNone(s.get(M.Project, pid))
+            self.assertEqual(s.query(M.Task).filter_by(project_id=pid).count(), 0)
+            self.assertEqual(s.query(M.Part).filter_by(project_id=pid).count(), 0)
+
+
+class GitIntegrationTest(unittest.TestCase):
+    def test_git_link_unlink_and_import(self):
+        import git_hub
+        c = T.client("m1")
+        # 1. Привязка аккаунта
+        r = c.post("/api/git/link", json={"username": "testuser", "token": "ghp_secret"}, headers=H).get_json()
+        self.assertTrue(r["ok"])
+        self.assertTrue(r["info"]["linked"])
+        self.assertEqual(r["info"]["username"], "testuser")
+
+        # 2. Проверка статуса
+        status = c.get("/api/git/status").get_json()
+        self.assertEqual(status["username"], "testuser")
+        self.assertTrue(status["linked"])
+
+        # 3. Список репозиториев (с моком)
+        saved_req = git_hub._github_request
+        mock_repos = [{"name": "super-app", "full_name": "testuser/super-app", "description": "Крутое приложение",
+                       "html_url": "https://github.com/testuser/super-app", "language": "Python",
+                       "stargazers_count": 5, "updated_at": "2026-10-12T10:00:00Z"}]
+        mock_details = {
+            "name": "super-app", "owner": "testuser", "full_name": "testuser/super-app",
+            "description": "Крутое приложение", "html_url": "https://github.com/testuser/super-app",
+            "readme": "# Super App\n\nИнструкция и запуск.",
+            "issues": [{"number": 1, "title": "Сделать API", "html_url": "https://github.com/testuser/super-app/issues/1"}]
+        }
+        git_hub._github_request = lambda url, token="": mock_repos if "repos" in url and "readme" not in url and "issues" not in url else {}
+        git_hub.fetch_repo_details = lambda repo, token="": mock_details
+        try:
+            repos_res = c.get("/api/git/repos").get_json()
+            self.assertEqual(len(repos_res["repos"]), 1)
+            self.assertEqual(repos_res["repos"][0]["name"], "super-app")
+
+            # 4. Импорт репозитория на стол в мастерскую
+            imp_res = c.post("/api/git/import", json={"repo": "testuser/super-app", "project_id": T.PID}, headers=H).get_json()
+            self.assertTrue(imp_res["ok"])
+            created_kinds = [it["kind"] for it in imp_res["created"]]
+            self.assertIn("link", created_kinds)
+            self.assertIn("note", created_kinds)
+            self.assertIn("checklist", created_kinds)
+
+            with M.Session() as s:
+                items = s.query(M.DeskItem).filter_by(member_id="m1").all()
+                titles = [it.title for it in items]
+                self.assertTrue(any("README" in t for t in titles))
+                self.assertTrue(any("Задачи GitHub" in t for t in titles))
+                self.assertTrue(any("Репозиторий" in t for t in titles))
+        finally:
+            git_hub._github_request = saved_req
+
+        # 5. Отвязка аккаунта
+        un = c.post("/api/git/unlink", headers=H).get_json()
+        self.assertTrue(un["ok"])
+        self.assertFalse(un["info"]["linked"])
+        self.assertEqual(c.get("/api/git/repos").status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()

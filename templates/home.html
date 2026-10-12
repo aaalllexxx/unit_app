@@ -98,7 +98,7 @@
     {% endif %}
 
     <div class="panel">
-      <div class="panel-head"><h3>Стендап</h3>{% if checkin %}<span class="chip tone s-active spacer">{{ icon('check', 12) }}записан</span>{% endif %}</div>
+      <div class="panel-head"><h3>Итоги дня</h3>{% if checkin %}<span class="chip tone s-active spacer">{{ icon('check', 12) }}записаны</span>{% endif %}</div>
       {% if checkin %}
       <div class="panel-body checkin-done">
         {% if checkin.done %}<div><b>Сделано</b><p class="pre">{{ checkin.done }}</p></div>{% endif %}
@@ -108,8 +108,8 @@
       </div>
       {% else %}
       <div class="panel-body stack-sm">
-        <p class="small muted">Минута в день: что сделано, что дальше и что мешает. Блокер сразу увидит руководитель.</p>
-        <button class="btn btn-ghost" type="button" data-sheet-open="checkin-sheet">{{ icon('pen', 15) }}Записать стендап</button>
+        <p class="small muted">Минута в день: что сделано, что дальше и что мешает. Помеху сразу увидит руководитель.</p>
+        <button class="btn btn-ghost" type="button" data-sheet-open="checkin-sheet">{{ icon('pen', 15) }}Подвести итоги дня</button>
       </div>
       {% endif %}
     </div>
@@ -149,7 +149,7 @@
 
 <dialog class="sheet" id="checkin-sheet" aria-labelledby="checkin-title">
   <div class="sheet-grip"></div>
-  <div class="sheet-head"><h3 id="checkin-title">Стендап · {{ today.strftime('%d.%m') }}</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
+  <div class="sheet-head"><h3 id="checkin-title">Итоги дня · {{ today.strftime('%d.%m') }}</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
   <form method="post" action="/checkin" class="sheet-body" id="checkin-form">
     <input type="hidden" name="next" value="/home">
     <label class="field"><span class="label">Что сделано</span><textarea class="textarea" name="done" data-autosize rows="2" autofocus placeholder="Вчера и сегодня">{{ checkin.done if checkin }}</textarea></label>
@@ -162,16 +162,5 @@
 </dialog>
 {% endif %}
 
-{% if can('project.create') %}
-<dialog class="sheet" id="new-project" aria-labelledby="np-title">
-  <div class="sheet-grip"></div>
-  <div class="sheet-head"><h3 id="np-title">Новый проект</h3><button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button></div>
-  <form method="post" action="/projects" class="sheet-body" id="np-form">
-    <label class="field"><span class="label">Название</span><input class="input" name="title" required autofocus placeholder="Например, «Аудит сайта клиента»"></label>
-    <label class="field"><span class="label">Коротко о цели</span><input class="input" name="summary" placeholder="Что должно получиться"></label>
-    <label class="toggle-row"><span class="grow"><b>Закрытый</b><span>Виден только команде проекта</span></span><span class="switch"><input type="checkbox" name="closed" value="1"><i></i></span></label>
-  </form>
-  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="np-form">{{ icon('plus', 15) }}Создать</button></div>
-</dialog>
-{% endif %}
+{% if can('project.create') %}{% include '_project_wizard.html' %}{% endif %}
 {% endblock %}

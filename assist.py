@@ -2,7 +2,7 @@
 ИИ-помощник лаборатории: чат, сводки и действия.
 
 Помощник знает то же, что видит человек: его задачи, проекты, части, сигналы,
-рабочий стол и стендап. Отвечает потоком. Когда предлагает что-то сделать —
+мастерскую и итоги дня. Отвечает потоком. Когда предлагает что-то сделать —
 завести задачу, часть проекта, заметку на стол, запись в журнал или
 передвинуть задачу, — добавляет в конец блок ```actions [...]```. Портал
 показывает каждое предложение карточкой с кнопкой «Применить»: ничего не
@@ -112,7 +112,7 @@ def context(person, project_id=None, item_id=None) -> str:
         lines += [f"- {s['text']}" + (f" ({s['project']})" if s["project"] else "") for s in sig[:12]]
     check = db().scalar(select(M.Checkin).where(M.Checkin.member_id == person.id, M.Checkin.day == today))
     if check:
-        lines.append(f"\nСтендап сегодня: сделано — {check.done[:300]}; план — {check.plan[:300]}"
+        lines.append(f"\nИтоги дня сегодня: сделано — {check.done[:300]}; план — {check.plan[:300]}"
                      + (f"; мешает — {check.blockers[:300]}" if check.blockers else ""))
     items = db().scalars(select(M.DeskItem).where(M.DeskItem.member_id == person.id)
                          .order_by(M.DeskItem.updated_at.desc()).limit(10)).all()
