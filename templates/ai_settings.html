@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}Настройки ИИ — Лаборатория UNIT{% endblock %}
+{% block back %}/ai{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">ИИ-агент</span>
+    <h1>Настройки ИИ</h1>
+    <p class="sub">Сколько потрачено и сколько можно, как агент думает и что ему разрешено от вашего имени.</p>
+  </div>
+  <div class="actions"><a class="btn btn-ghost" href="/ai">{{ icon('spark', 15) }}К агенту</a></div>
+</div>
+
+{# Лимиты — кольцами: сколько ушло сегодня и за месяц из лимита по тегам или личного #}
+<section class="panel panel-pad ai-limits">
+  <div class="rings">
+    {% for r in budget.rings %}
+    <div class="ring {{ 'full' if r.limit and r.percent >= 100 else 'warn' if r.percent >= 80 else '' }}" style="--p: {{ r.percent if r.limit else 0 }}">
+      <b>{{ r.spent_label }}</b><span>{% if r.limit %}из {{ r.limit_label }} {{ r.label }}{% else %}{{ r.label }} · без лимита{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="stack-sm grow" style="min-width: 240px">
+    <h3>Лимиты на ИИ</h3>
+    <p class="small muted">Расход считается по ценам агрегатора за каждое обращение к модели. Лимит задаёт руководитель в «Доступах» — у тега или лично.</p>
+    {% if budget.over %}
+    <p class="small" style="color: var(--warn)">Лимит исчерпан — агент продолжает работать на дешёвой модели {{ cheap }}: такие лимитом не ограничены.</p>
+    {% else %}
+    <p class="small faint">Когда лимит закончится, агент не остановится: он перейдёт на дешёвую модель команды{% if cheap %} ({{ cheap }}){% endif %}.</p>
+    {% endif %}
+    {% if can('page.admin') %}<a class="btn btn-quiet btn-sm" href="/access/person/{{ me.id }}" style="align-self: flex-start">{{ icon('key', 14) }}Лимиты и права в «Доступах»</a>{% endif %}
+  </div>
+</section>
+
+<div class="grid split" style="margin-top: 18px">
+  <form method="post" class="panel">
+    <div class="panel-head"><h3>Как работает агент</h3></div>
+    <div class="panel-body stack" style="gap: 18px">
+      <div class="field">
+        <span class="label">Размышления</span>
+        <div class="seg-pick" role="radiogroup" aria-label="Размышления">
+          <label><input type="radio" name="reasoning" value="" {{ 'checked' if not prefs.reasoning }}><span>Как в лаборатории<small>{{ reasoning[default_reasoning] }}</small></span></label>
+          {% for key, title in reasoning.items() %}
+          <label><input type="radio" name="reasoning" value="{{ key }}" {{ 'checked' if prefs.reasoning == key }}><span>{{ title }}</span></label>
+          {% endfor %}
+        </div>
+        <span class="hint">Глубже — точнее на сложных задачах, но дольше и дороже. Помощники агента не размышляют — они дешёвые и быстрые.</span>
+      </div>
+
+      <label class="toggle-row"><span class="grow"><b>Сжимать длинные чаты</b>
+        <span>Начало длинного разговора сворачивается в краткое содержание — агент помнит главное, а каждый ответ дешевле</span></span>
+        <span class="switch"><input type="checkbox" name="compact" value="1" {{ 'checked' if prefs.compact }}><i></i></span></label>
+
+      {% if can('ai.pick_model') %}
+      <label class="field"><span class="label">Модель по умолчанию</span>
+        <select class="select" name="model">
+          <option value="">Основная модель лаборатории — {{ main }}</option>
+          {% for m in models if not m.default %}
+          <option value="{{ m.id }}" {{ 'selected' if prefs.model == m.id }}>{{ m.name }}{% if m.label %} · ≈ {{ m.label }} за обращение{% endif %}</option>
+          {% endfor %}
+        </select>
+        <span class="hint">В каждом чате модель можно сменить в поле ввода.</span></label>
+      {% else %}
+      <div class="field"><span class="label">Модель</span><p class="small muted">Основная модель лаборатории — {{ main }}. Выбирать модель можно с правом «Выбирать модель».</p></div>
+      {% endif %}
+
+      {% if can('ai.auto') %}
+      <div class="field">
+        <span class="label">Режим новых чатов</span>
+        <div class="seg-pick" role="radiogroup" aria-label="Режим">
+          <label><input type="radio" name="mode" value="manual" {{ 'checked' if prefs.mode != 'auto' }}><span>Ручной<small>изменения — после «Разрешить»</small></span></label>
+          <label><input type="radio" name="mode" value="auto" {{ 'checked' if prefs.mode == 'auto' }}><span>Авто<small>агент меняет данные сам</small></span></label>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="panel-foot"><button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button></div>
+  </form>
+
+  <div class="stack">
+    <div class="panel">
+      <div class="panel-head"><h3>Что агенту можно</h3><span class="tiny faint spacer">по вашим правам</span></div>
+      <div class="panel-body stack-sm">
+        <p class="small muted">Агент действует от вашего имени: видит и меняет только то, что разрешено вам.</p>
+        {% for g in abilities %}
+        <div class="perm-group" style="padding: 0">
+          <span class="label-mono">{{ g.group }}</span>
+          {% for r in g.rows %}
+          <div class="perm-row" style="padding: 6px 0">
+            <span class="perm-state {{ 'on' if r.on }}" title="{{ r.name }}">{{ icon('check' if r.on else 'x', 13) }}</span>
+            <span class="grow"><b style="font-weight: 500">{{ r.label }}</b></span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Расход за месяц</h3></div>
+      {% if by_model %}
+      <div class="rows">
+        {% for r in by_model %}
+        <div class="r"><span class="grow small">{{ r.model }}</span><span class="tiny faint mono">{{ r.requests }} обращ.</span><b class="mono small">{{ r.cost }}</b></div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="empty">В этом месяце ИИ ещё не тратил.</div>{% endif %}
+    </div>
+    {% if memory %}
+    <div class="panel panel-pad stack-sm">
+      <h3>Память агента</h3>
+      <p class="small muted">Агент помнит это во всех чатах. Стереть запись можно на странице агента — «Память агента».</p>
+      <ul class="small" style="margin: 0; padding-left: 18px">{% for m in memory %}<li>{{ m.text }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

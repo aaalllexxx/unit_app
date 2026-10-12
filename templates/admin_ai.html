@@ -6,69 +6,102 @@
   <div class="titles">
     <span class="eyebrow">Управление</span>
     <h1>ИИ лаборатории</h1>
-    <p class="sub">Агрегатор, основная модель агента и его команда. Кому доступен ИИ и сколько можно тратить — в «Доступах» (право «Пользоваться ИИ-агентом» и лимиты тегов).</p>
+    <p class="sub">Агрегатор, основная модель агента и его команда. Кому доступен ИИ и сколько можно тратить — в «Доступах»: право «Пользоваться ИИ-агентом» и лимиты в долларах у тегов и людей.</p>
   </div>
   {% if ready %}<span class="chip tone s-active"><span class="dot"></span>включён</span>{% else %}<span class="chip">не настроен</span>{% endif %}
 </div>
 
 <form method="post" action="/admin/ai" class="grid split">
-  <div class="panel">
-    <div class="panel-head"><h3>Подключение</h3></div>
-    <div class="panel-body stack-sm" style="gap: 14px">
-      <p class="small muted">Любой сервис с протоколом OpenAI. Цены моделей берутся у агрегатора автоматически, по ним считаются лимиты. Ключ хранится в базе портала и наружу не отдаётся.</p>
-      <label class="field"><span class="label">Адрес API</span><input class="input mono" name="base_url" value="{{ cfg.base_url }}" placeholder="https://api.claudehub.fun/v1" inputmode="url"></label>
-      <label class="field"><span class="label">Ключ API</span><input class="input mono" name="api_key" type="password" autocomplete="off" placeholder="{{ cfg.masked or 'sk-…' }}">
-        <span class="hint">{% if cfg.key_set %}Ключ сохранён ({{ cfg.masked }}). Пустое поле — оставить прежний.{% else %}Для локальных моделей можно без ключа.{% endif %}</span></label>
-      <div class="fgrid">
-        <label class="field"><span class="label">Основная модель агента</span><input class="input mono" name="model" value="{{ cfg.model }}" placeholder="claude-opus-4.7"></label>
-        <label class="field">
-          <div class="row" style="gap: 8px; align-items: center">
-            <span class="label grow">Команда агента</span>
-            <button class="btn btn-quiet btn-xs" type="button" data-pull-team title="Подтянуть доступные быстрые модели из списка агрегатора">{{ icon('refresh', 12) }}Подтянуть через API</button>
+  <div class="stack">
+    <div class="panel">
+      <div class="panel-head"><h3>Подключение</h3></div>
+      <div class="panel-body stack-sm" style="gap: 14px">
+        <p class="small muted">Любой сервис с протоколом OpenAI. Цены моделей берутся у агрегатора автоматически — по ним считаются расход и лимиты. Ключ хранится в базе портала и наружу не отдаётся.</p>
+        <label class="field"><span class="label">Адрес API</span><input class="input mono" name="base_url" value="{{ cfg.base_url }}" placeholder="https://api.claudehub.fun/v1" inputmode="url"></label>
+        <label class="field"><span class="label">Ключ API</span><input class="input mono" name="api_key" type="password" autocomplete="off" placeholder="{{ cfg.masked or 'sk-…' }}">
+          <span class="hint">{% if cfg.key_set %}Ключ сохранён ({{ cfg.masked }}). Пустое поле — оставить прежний.{% else %}Для локальных моделей можно без ключа.{% endif %}</span></label>
+        <label class="field"><span class="label">Основная модель агента</span>
+          <input class="input mono" name="model" value="{{ cfg.model }}" placeholder="claude-opus-4.7" list="ai-models">
+          <span class="hint">Думает, руководит командой и проверяет её. Сильная модель — точнее, но дороже.</span></label>
+        <datalist id="ai-models">{% for m in models %}<option value="{{ m.id }}">{{ m.name }}{% if m.label %} · ≈ {{ m.label }}{% endif %}</option>{% endfor %}</datalist>
+        <div class="field">
+          <span class="label">Размышления по умолчанию</span>
+          <div class="seg-pick" role="radiogroup" aria-label="Размышления">
+            {% for key, title in reasoning.items() %}
+            <label><input type="radio" name="reasoning" value="{{ key }}" {{ 'checked' if cfg.reasoning == key }}><span>{{ title }}</span></label>
+            {% endfor %}
           </div>
-          <input class="input mono" name="fast_model" value="{{ cfg.fast_model }}" placeholder="deepseek-v4-flash, deepseek-v4-pro">
-          <span class="hint">Быстрые модели через запятую: им основная поручает поиск и черновики, а потом проверяет.</span>
-        </label>
+          <span class="hint">Человек может выбрать своё в «Настройках ИИ».</span>
+        </div>
+        <label class="field"><span class="label">Указания агенту</span><textarea class="textarea" name="prompt" data-autosize rows="3" placeholder="Например: оценки задач — в часах, не больше 8 ч на задачу; отчёты — коротко, списком.">{{ cfg.prompt }}</textarea></label>
       </div>
-      <label class="field"><span class="label">Указания агенту</span><textarea class="textarea" name="prompt" data-autosize rows="3" placeholder="Например: оценки задач — в часах, не больше 8 ч на задачу; отчёты — коротко, списком.">{{ cfg.prompt }}</textarea></label>
+      <div class="panel-foot row-wrap" style="gap: 8px">
+        <button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button>
+        <button class="btn btn-ghost" type="submit" name="test" value="1">{{ icon('spark', 15) }}Сохранить и проверить</button>
+        {% if cfg.key_set %}<button class="btn btn-danger btn-sm spacer" type="submit" name="forget" value="1" data-confirm="Удалить ключ API?">Удалить ключ</button>{% endif %}
+      </div>
     </div>
-    <div class="panel-foot row-wrap" style="gap: 8px">
-      <button class="btn btn-primary" type="submit">{{ icon('check', 15) }}Сохранить</button>
-      <button class="btn btn-ghost" type="submit" name="test" value="1">{{ icon('spark', 15) }}Сохранить и проверить</button>
-      {% if cfg.key_set %}<button class="btn btn-danger btn-sm spacer" type="submit" name="forget" value="1" data-confirm="Удалить ключ API?">Удалить ключ</button>{% endif %}
+
+    <div class="panel">
+      <div class="panel-head"><h3>Команда агента</h3>
+        <button class="btn btn-quiet btn-sm spacer" type="button" data-pull-team title="Перечитать каталог агрегатора и отметить дешёвые модели">{{ icon('refresh', 13) }}Обновить каталог</button></div>
+      <div class="panel-body stack-sm">
+        <p class="small muted">Дешёвые модели, которым основная поручает поиск по проектам и черновики, а потом проверяет. Они же продолжают работу, когда у человека исчерпан лимит: модели дешевле ${{ '%.3f' % 0.004 }} за обращение лимитом не ограничены.</p>
+        {% if models %}
+        <div class="model-pick" data-team-pick>
+          {% for m in models if not m.default %}
+          <label><input type="checkbox" name="team_pick" value="{{ m.id }}" {{ 'checked' if m.id in cfg.team }}>
+            <span><b>{{ m.name }}</b> <small>{{ m.id }}</small></span>
+            <span class="price {{ 'cheap' if m.cheap }}">{{ ('≈ ' ~ m.label) if m.label else 'цена неизвестна' }}</span></label>
+          {% endfor %}
+        </div>
+        <span class="hint">Ничего не отмечено — команда собирается сама из быстрых моделей каталога.</span>
+        {% else %}
+        <label class="field"><span class="label">Модели через запятую</span>
+          <input class="input mono" name="team" value="{{ cfg.team_raw }}" placeholder="deepseek-v4-flash, gemini-3-flash">
+          <span class="hint">Каталог агрегатора появится после подключения.</span></label>
+        {% endif %}
+      </div>
     </div>
   </div>
-  <div class="panel panel-pad stack-sm">
-    <h3>Как устроен агент</h3>
-    <p class="small muted">Основная модель понимает задачу, раздаёт быстрым моделям поиск по проектам и черновики, сверяет их ответы с данными портала и только потом отвечает или действует. Так дешевле и быстрее, а точность — от основной модели.</p>
-    <p class="small muted">Агент действует с правами человека, который его спрашивает: видит и меняет только то, что разрешено ему самому.</p>
+
+  <div class="stack">
+    <div class="panel panel-pad stack-sm">
+      <h3>Как устроен агент</h3>
+      <p class="small muted">Основная модель понимает задачу, раздаёт команде поиск по проектам и черновики, сверяет их ответы с данными портала и только потом отвечает или действует. Так дешевле и быстрее, а точность — от основной модели.</p>
+      <p class="small muted">Агент действует с правами человека, который его спрашивает: видит и меняет только то, что разрешено ему самому. В ручном режиме всё, что меняет данные, ждёт «Разрешить»; режим «Авто» — по праву «Агент без подтверждений». Администрировать (теги, права, лимиты) — только с правом «Агент администрирует».</p>
+    </div>
+    {% if team %}
+    <div class="panel">
+      <div class="panel-head"><h3>Сейчас в команде</h3></div>
+      <div class="rows">
+        {% for r in team %}
+        <div class="r"><span class="grow small"><b>{{ r.name }}</b> <span class="tiny faint mono">{{ r.id }}</span></span>
+          <b class="mono small" style="color: {{ 'var(--ok)' if r.cheap else 'var(--ink-2)' }}">{{ r.price or '—' }}</b></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
   </div>
 </form>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   var b = document.querySelector('[data-pull-team]');
   if (!b) return;
-  b.addEventListener('click', function() {
+  b.addEventListener('click', function () {
     b.disabled = true;
-    b.textContent = 'Загрузка…';
-    fetch('/admin/ai/models').then(function(r) { return r.json(); }).then(function(res) {
+    fetch('/admin/ai/models', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (res) {
       b.disabled = false;
-      b.innerHTML = 'Подтянуть через API';
-      if (res.fast && res.fast.length) {
-        var inp = document.querySelector('input[name="fast_model"]');
-        if (inp) inp.value = res.fast.join(', ');
-        if (window.UNIT) window.UNIT.toast('Подтянуто моделей: ' + res.fast.length, 'ok');
-      } else if (res.error) {
-        if (window.UNIT) window.UNIT.toast(res.error, 'err');
+      if (res.error) { window.UNIT.toast(res.error, 'err'); return; }
+      var box = document.querySelector('[data-team-pick]');
+      if (box && !box.querySelector('input:checked') && res.fast && res.fast.length) {
+        box.querySelectorAll('input').forEach(function (i) { i.checked = res.fast.indexOf(i.value) >= 0; });
+        window.UNIT.toast('Отмечены дешёвые модели: ' + res.fast.length + '. Сохраните, чтобы применить', 'ok');
       } else {
-        if (window.UNIT) window.UNIT.toast('Подходящие модели не найдены', 'info');
+        window.UNIT.toast('Каталог обновлён: моделей ' + (res.models || []).length + '. Перезагрузите страницу, чтобы увидеть цены', 'ok');
       }
-    }).catch(function(err) {
-      b.disabled = false;
-      b.innerHTML = 'Подтянуть через API';
-      if (window.UNIT) window.UNIT.toast(err.message || 'Ошибка связи', 'err');
-    });
+    }).catch(function (err) { b.disabled = false; window.UNIT.toast(err.message || 'Ошибка связи', 'err'); });
   });
 });
 </script>

@@ -1326,108 +1326,25 @@
         }
     });
 
-    /* 10. ИИ Ассистент на столе */
+    /* 10. ИИ-агент на столе: тот же чат, что на странице агента (static/agent.js).
+       Агент видит мастерскую и может навести в ней порядок — стол перечитается сам. */
     registerTool({
         id: 'ai',
-        title: 'ИИ Ассистент',
+        title: 'ИИ-агент',
         icon: 'spark',
-        w: 0.44,
-        h: 0.65,
-        mount: function (body, win) {
-            var msgs = [
-                { role: 'assistant', text: 'Здравствуйте! Я ассистент лаборатории. Чем помочь на рабочем столе?' }
-            ];
-
-            function render() {
-                body.innerHTML = '<div class="wt-bar">'
-                    + '<span class="small faint">ИИ на столе</span>'
-                    + '<span class="wt-grow"></span>'
-                    + '<button class="wt-btn" type="button" data-ai-pill="Посмотри на наработки и помоги составить план дня">План дня</button>'
-                    + '<button class="wt-btn" type="button" data-ai-pill="Предложи чек-лист по задачам">Чек-лист</button>'
-                    + '</div>'
-                    + '<div class="wt-scroll stack-sm" data-ai-msgs>'
-                    + msgs.map(function (m) {
-                        return '<div class="msg is-' + m.role + '" style="padding: 10px 14px; border-radius: 12px; font-size: 13.5px; background: ' + (m.role === 'user' ? 'var(--accent-soft)' : 'var(--surface-2)') + '">'
-                            + '<b class="tiny faint" style="display: block; margin-bottom: 4px">' + (m.role === 'user' ? 'Вы' : 'Агент UNIT') + '</b>'
-                            + '<div class="md" style="line-height: 1.5">' + LAB.md(m.text) + '</div>'
-                            + '</div>';
-                    }).join('')
-                    + '</div>'
-                    + '<form class="wt-bar" data-ai-form style="border-top: 1px solid var(--line); border-bottom: 0">'
-                    + '<input class="input input-sm grow" data-ai-in placeholder="Задайте вопрос агенту…" required>'
-                    + '<button class="btn btn-primary btn-sm btn-icon" type="submit">' + icon('send', 14) + '</button>'
-                    + '</form>';
-
-                var scrollBox = $('[data-ai-msgs]', body);
-                scrollBox.scrollTop = scrollBox.scrollHeight;
-
-                var form = $('[data-ai-form]', body);
-                form.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    var inp = $('[data-ai-in]', body);
-                    var text = inp.value.trim();
-                    if (!text) return;
-                    inp.value = '';
-                    sendPrompt(text);
-                });
-
-                body.querySelectorAll('[data-ai-pill]').forEach(function (b) {
-                    b.addEventListener('click', function () {
-                        sendPrompt(b.getAttribute('data-ai-pill'));
-                    });
-                });
+        single: true,
+        w: 0.42,
+        h: 0.8,
+        mount: function (body) {
+            var holder = h('<div class="wd-agent"></div>');
+            body.appendChild(holder);
+            if (!window.LabAgent || !rawData.ai_on) {
+                holder.innerHTML = '<p class="wd-empty-note">ИИ лаборатории не подключён — руководитель включает его в «ИИ лаборатории».</p>';
+                return {};
             }
-
-            function sendPrompt(q) {
-                msgs.push({ role: 'user', text: q });
-                msgs.push({ role: 'assistant', text: 'Думаю…' });
-                render();
-
-                fetch('/api/ai/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: q, thread: 'me' })
-                }).then(function (r) {
-                    if (!r.ok) throw new Error('Ошибка связи');
-                    var reader = r.body.getReader();
-                    var decoder = new TextDecoder();
-                    var buf = '';
-                    var last = msgs[msgs.length - 1];
-                    last.text = '';
-
-                    function pump() {
-                        return reader.read().then(function (res) {
-                            if (res.done) { render(); return; }
-                            buf += decoder.decode(res.value, { stream: true });
-                            var lines = buf.split('\n');
-                            buf = lines.pop();
-                            lines.forEach(function (line) {
-                                if (line.startsWith('data: ')) {
-                                    try {
-                                        var data = JSON.parse(line.slice(6));
-                                        if (data.delta) {
-                                            last.text += data.delta;
-                                            var scrollBox = $('[data-ai-msgs]', body);
-                                            if (scrollBox) {
-                                                var lastEl = scrollBox.lastElementChild;
-                                                if (lastEl) $('.md', lastEl).innerHTML = LAB.md(last.text);
-                                            }
-                                        }
-                                    } catch (err) {}
-                                }
-                            });
-                            return pump();
-                        });
-                    }
-                    return pump();
-                }).catch(function (err) {
-                    msgs[msgs.length - 1].text = 'Не удалось получить ответ: ' + err.message;
-                    render();
-                });
-            }
-
-            render();
-            return {};
+            var ctrl = null;
+            window.LabAgent.mountInto(holder, { context: 'desk' }).then(function (c) { ctrl = c; });
+            return { load: function () { if (ctrl) ctrl.focus(); } };
         }
     });
 

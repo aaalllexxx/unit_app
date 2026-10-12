@@ -38,6 +38,7 @@
   </script>
   <script src="{{ asset('/static/unit.js') }}" defer></script>
   {% if me and me.perms %}<script src="{{ asset('/static/lab.js') }}" defer></script>{% endif %}
+  {% if ai_on %}<script src="{{ asset('/static/agent.js') }}" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
 </head>
 <body data-user-id="{{ me.id if me else '' }}" data-haptics="{{ '1' if haptics else '0' }}">
@@ -171,17 +172,13 @@
 {% endif %}
 
 {% if ai_on %}
-{# ИИ-агент поверх любой страницы: справа на компьютере, снизу на телефоне #}
-<dialog class="sheet drawer tall" id="ai-sheet" aria-labelledby="ai-title">
-  <div class="sheet-grip"></div>
-  <div class="sheet-head">
-    <span class="ai-mark">{{ icon('spark', 16) }}</span>
-    <h3 id="ai-title">ИИ-агент</h3>
-    <a class="icon-btn" href="/ai" title="Открыть полностью" aria-label="Открыть полностью">{{ icon('external', 17) }}</a>
-    <button class="icon-btn" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 18) }}</button>
-  </div>
-  {% include '_chat.html' %}
+{# ИИ-агент поверх любой страницы: справа на компьютере, во весь экран на телефоне (static/agent.js).
+   Разметка чата — из шаблона: панель и окно мастерской собирают её сами, когда понадобится. #}
+{% from '_agent.html' import agent_main %}
+<dialog class="sheet drawer tall ac-sheet" id="ai-sheet" aria-label="ИИ-агент">
+  <div class="ac ac-compact is-empty" data-agent-drawer></div>
 </dialog>
+<template id="agent-tpl">{{ agent_main(compact=True) }}</template>
 {% endif %}
 {% endif %}
 {% endblock %}

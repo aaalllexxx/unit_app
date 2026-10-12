@@ -277,11 +277,19 @@ class Timer(Base):
 
 
 class AiChat(Base):
-    """Разговор с ИИ агентом. id: «me» (личный), «c_<uid>» (пользовательский), «p<id>» (о проекте)."""
+    """Чат с ИИ-агентом (agent.py). items — лента: реплики, шаги-инструменты, план, помощники, цена.
+    context — откуда начат разговор: «p<id>» — о проекте, «desk» — из мастерской."""
     __tablename__ = "ai_chats"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     member_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200), default="Новый чат")
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    model: Mapped[str] = mapped_column(String(80), default="")
+    mode: Mapped[str] = mapped_column(String(10), default="manual")      # manual | auto
+    context: Mapped[str] = mapped_column(String(40), default="")
+    summary: Mapped[str] = mapped_column(Text, default="")               # сжатое начало длинного разговора
+    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    tokens: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
@@ -414,6 +422,9 @@ def _migrate() -> None:
         ],
         "directions": [("position", "INTEGER DEFAULT 0"), ("icon", "VARCHAR(24) DEFAULT ''")],
         "tasks": [("checklist", "JSON DEFAULT '[]'"), ("moved_at", "DATETIME"), ("priority", "INTEGER DEFAULT 2")],
+        "ai_chats": [("items", "JSON DEFAULT '[]'"), ("model", "VARCHAR(80) DEFAULT ''"),
+                     ("mode", "VARCHAR(10) DEFAULT 'manual'"), ("context", "VARCHAR(40) DEFAULT ''"),
+                     ("summary", "TEXT DEFAULT ''"), ("cost", "FLOAT DEFAULT 0"), ("tokens", "INTEGER DEFAULT 0")],
     }
     with ENGINE.begin() as con:
         for table, columns in added.items():

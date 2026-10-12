@@ -1,0 +1,81 @@
+{% from '_icons.html' import icon %}
+{# ИИ-агент (static/agent.js, agent.py): лента по центру, шаги агента тихими строками, всё управление —
+   в поле ввода: файлы, режим, модель с ценой обращения. compact — панель «Спросить агента» и окно мастерской. #}
+{% macro agent_main(compact=False) %}
+<section class="ac-main">
+  <header class="ac-bar">
+    {% if not compact %}<button class="ac-icon ac-side-open" type="button" data-side-open aria-label="Чаты">{{ icon('list', 18) }}</button>{% endif %}
+    <div class="ac-title" data-title title="Нажмите, чтобы переименовать">Новый чат</div>
+    {% if compact %}
+    <button class="ac-icon" type="button" data-new title="Новый чат" aria-label="Новый чат">{{ icon('plus', 17) }}</button>
+    <a class="ac-icon" href="/ai" data-full title="Открыть полностью" aria-label="Открыть полностью">{{ icon('external', 16) }}</a>
+    {% endif %}
+    <div class="ac-menu" data-menu hidden>
+      <button class="ac-icon" type="button" data-menu-open aria-label="Ещё">{{ icon('more', 18) }}</button>
+      <div class="ac-menu-pop" data-menu-pop hidden>
+        <button type="button" data-rename>{{ icon('pen', 14) }}Переименовать</button>
+        <a href="/ai/settings">{{ icon('settings', 14) }}Настройки ИИ</a>
+        <button type="button" data-delete class="is-danger">{{ icon('trash', 14) }}Удалить чат</button>
+      </div>
+    </div>
+    {% if compact %}<button class="ac-icon" type="button" data-sheet-close aria-label="Закрыть">{{ icon('x', 17) }}</button>{% endif %}
+  </header>
+
+  <div class="ac-feed" data-feed>
+    <div class="ac-hello" data-hello>
+      <h1>С чего начнём?</h1>
+      <p>Разберу проекты и сроки, разобью работу на задачи с исполнителями, наведу порядок в мастерской, подготовлю отчёт или план. Большое раздам своей команде моделей и проверю.</p>
+      <p class="ac-warn" data-not-ready hidden>ИИ лаборатории не подключён — руководитель включает его в «ИИ лаборатории».</p>
+    </div>
+  </div>
+
+  <div class="ac-pending" data-pending hidden>
+    <span><b data-pending-n>0</b> ждут решения</span>
+    <button type="button" class="ac-ok" data-decide-all="1">Разрешить все</button>
+    <button type="button" class="ac-no" data-decide-all="0">Отклонить</button>
+  </div>
+
+  <form class="ac-composer" data-composer>
+    <div class="ac-box">
+      <div class="ac-files" data-files hidden></div>
+      <textarea rows="1" data-text placeholder="Напишите задачу агенту…" aria-label="Сообщение агенту"></textarea>
+      <div class="ac-tools">
+        <label class="ac-tool" title="Приложить файлы: текст, код, таблицы CSV">
+          {{ icon('plus', 17) }}
+          <input type="file" multiple hidden data-file-input
+                 accept=".txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.sql,.yaml,.yml,.xml,.log,.ini,.toml,.sh,.go,.rs,.java,.kt,.c,.cpp,.h,.cs,.php,.rb,.swift,.tex">
+        </label>
+        <button class="ac-pill" type="button" data-mode-toggle><span data-mode-icon>{{ icon('shield', 14) }}</span><span data-mode-label>Ручной</span></button>
+        <div class="ac-model" data-model-box>
+          <button class="ac-pill ac-model-btn" type="button" data-model-open aria-haspopup="listbox" aria-expanded="false" title="Модель для этого чата">
+            <span class="ac-model-name" data-model-name>Модель</span>
+            <em class="ac-model-price" data-model-price hidden></em>
+            {{ icon('down', 12) }}</button>
+          <div class="ac-model-pop" data-model-pop hidden>
+            <div class="ac-model-sheet" role="listbox" aria-label="Модель">
+              <div class="ac-model-head"><b>Модель</b><span>цена — примерно за одно обращение</span></div>
+              <div class="ac-model-list" data-model-list></div>
+              <p class="ac-model-foot">За один ответ агент обращается к модели несколько раз — точная цена появится под ответом. Исчерпан лимит — работа продолжится на дешёвой модели команды.</p>
+            </div>
+          </div>
+        </div>
+        <span class="ac-grow"></span>
+        <button class="ac-send" type="submit" data-send aria-label="Отправить">{{ icon('arrow', 17) }}</button>
+        <button class="ac-stop" type="button" data-stop hidden aria-label="Остановить агента"><i></i></button>
+      </div>
+    </div>
+    <div class="ac-hint">
+      <span class="ac-status" data-status hidden></span>
+      <span class="ac-spent" data-spent hidden></span>
+    </div>
+  </form>
+
+  <div class="ac-chips" data-chips>
+    <button type="button" data-suggest="С чего мне начать сегодня? Учти сроки, приоритеты и сигналы.">С чего начать</button>
+    <button type="button" data-suggest="Где риски в моих проектах и что сделать на этой неделе, чтобы успеть в срок?">Риски проектов</button>
+    <button type="button" data-suggest="Разбей проект на части и задачи с исполнителями из команды, сроками и оценками: ">Разбить проект</button>
+    <button type="button" data-suggest="Оптимизируй пространство моей мастерской: расставь окна, закрепи важное, привяжи наработки к проектам, найди дубли.">Порядок в мастерской</button>
+    <button type="button" data-suggest="Составь отчёт по моей зоне за неделю: что сделано, что сдвинулось, что мешает.">Отчёт за неделю</button>
+  </div>
+</section>
+{% endmacro %}

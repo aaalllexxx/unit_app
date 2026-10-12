@@ -4,6 +4,7 @@ import io
 import json
 import os
 import sys
+import time
 import unittest
 from datetime import date, timedelta
 
@@ -206,49 +207,125 @@ class ControlTest(unittest.TestCase):
 
 
 class AiTest(unittest.TestCase):
+    """ИИ-агент: шаги-инструменты с правами человека, «Разрешить» в ручном режиме, авто, лимиты."""
+    PRICES = {"test-model": {"price_input_per_1m_usd": 15, "price_output_per_1m_usd": 75},
+              "cheap-flash": {"price_input_per_1m_usd": 0.1, "price_output_per_1m_usd": 0.4}}
+
     def setUp(self):
         with M.Session() as s:
-            ai.save(s, "https://example.invalid/v1", "test-model", "", [], 0, "Будь краток")
-        self._stream, self._ask = ai.stream, ai.ask
+            ai.save(s, "https://example.invalid/v1", "test-model", "cheap-flash", "Будь краток")
+        self._call, self._ask, self._catalog = ai.call, ai.ask, ai.catalog
+        ai.catalog = lambda s, fresh=False: self.PRICES
+        self.script = []
+        self.seen = []
+
+        def fake_call(s, messages, model="", **kw):
+            self.seen.append((model, messages))
+            text = self.script.pop(0) if self.script else json.dumps({"say": "Готово.", "calls": []})
+            return {"text": text, "reasoning": "", "usage": {"prompt_tokens": 1000, "completion_tokens": 100},
+                    "model": model, "cost": ai.cost_of(s, model, {"prompt_tokens": 1000, "completion_tokens": 100})[0],
+                    "tokens": 1100, "stopped": False}
+        ai.call = fake_call
 
     def tearDown(self):
-        ai.stream, ai.ask = self._stream, self._ask
+        ai.call, ai.ask, ai.catalog = self._call, self._ask, self._catalog
 
-    def test_chat_with_actions(self):
-        reply = ('План готов.\n```actions\n[{"type": "task", "project_id": %d, "title": "Написать тесты", '
-                 '"assignee_id": "m1", "due": "2026-12-01"}, {"type": "note", "title": "Итоги", "body": "…"}]\n```' % T.PID)
-        seen = {}
+    def _wait(self, c, chat, until, timeout=10):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            data = c.get(f"/api/ai/c/{chat}").get_json()
+            if until(data):
+                return data
+            time.sleep(0.05)
+        self.fail("агент не дошёл до нужного состояния: " + json.dumps(data, ensure_ascii=False)[:600])
 
-        def fake_stream(s, messages, **kw):
-            seen["system"] = messages[0]["content"]
-            for piece in (reply[:20], reply[20:]):
-                yield {"delta": piece}
-            yield {"done": True, "tokens": 42}
-
-        ai.stream = fake_stream
+    def test_agent_asks_before_changes_and_acts_with_rights(self):
+        self.script = [
+            json.dumps({"say": "Смотрю проекты и заведу задачу.", "calls": [
+                {"tool": "list_projects", "args": {}},
+                {"tool": "create_task", "args": {"project_id": T.PID, "title": "Написать тесты", "assignee_id": "m1",
+                                                 "due": "2026-12-01"}}]}),
+            json.dumps({"say": "Задача заведена.", "calls": []}),
+        ]
         c = T.client("h")
-        r = c.post("/api/ai/chat", json={"text": "Что делать?", "thread": f"p{T.PID}"}, headers=H)
-        events = [json.loads(line[6:]) for line in r.get_data(as_text=True).split("\n\n") if line.startswith("data: ")]
-        done = events[-1]["message"]
-        self.assertEqual(done["text"], "План готов.")
-        self.assertEqual([a["label"] for a in done["actions"]], ["Задача", "Заметка на стол"])
-        self.assertIn("Будь краток", seen["system"])
-        self.assertIn("Портал", seen["system"])
-        res = c.post("/api/ai/apply", json={"message_id": done["id"], "index": 0}, headers=H).get_json()
-        self.assertIn("/p/", res["link"])
-        self.assertEqual(c.post("/api/ai/apply", json={"message_id": done["id"], "index": 0}, headers=H).status_code, 409)
+        self.assertEqual(c.get("/ai").status_code, 200)
+        chat = c.post("/api/ai/new", json={"mode": "manual", "context": f"p{T.PID}"}, headers=H).get_json()["chat"]["id"]
+        self.assertEqual(c.post(f"/api/ai/c/{chat}/send", data={"text": "Заведи задачу на тесты"}, headers=H).status_code, 200)
+        data = self._wait(c, chat, lambda d: any(i.get("status") == "awaiting" for i in d["items"]))
+        waiting = [i for i in data["items"] if i.get("status") == "awaiting"][0]
+        self.assertEqual(waiting["name"], "create_task")
+        self.assertIn("Написать тесты", waiting["confirm"]["text"])                  # человек видит, что именно
+        with M.Session() as s:
+            self.assertFalse(s.query(M.Task).filter_by(title="Написать тесты").count())   # до «Разрешить» — ничего
+        c.post(f"/api/ai/c/{chat}/decide", json={"tool": waiting["id"], "ok": True}, headers=H)
+        data = self._wait(c, chat, lambda d: not d["run"] and any(i["type"] == "usage" for i in d["items"]))
         with M.Session() as s:
             task = s.query(M.Task).filter_by(title="Написать тесты").one()
             self.assertEqual((task.assignee_id, str(task.due)), ("m1", "2026-12-01"))
-        history = c.get(f"/api/ai/history?thread=p{T.PID}").get_json()["messages"]
-        self.assertTrue(history[-1]["actions"][0]["applied"])
-        # Заказчику ИИ не положен; чужие сообщения не применить
-        self.assertEqual(T.client("c").post("/api/ai/chat", json={"text": "?"}, headers=H).status_code, 403)
-        self.assertEqual(T.client("m1").post("/api/ai/apply", json={"message_id": done["id"], "index": 1},
-                                             headers=H).status_code, 404)
+        kinds = [i["type"] for i in data["items"]]
+        self.assertEqual(kinds[0], "user")
+        self.assertIn("usage", kinds)
+        self.assertEqual(data["items"][-2]["text"], "Задача заведена.")
+        system = self.seen[0][1][0]["content"]
+        self.assertIn("Будь краток", system)                                          # указания руководителя
+        self.assertIn("create_task", system)
+        self.assertIn(f"Разговор начат со страницы проекта {T.PID}", system)
+        with M.Session() as s:
+            self.assertGreater(s.query(M.AiSpend).filter_by(member_id="h").count(), 0)  # расход посчитан
+        # Чужой чат не открыть, заказчику ИИ не положен
+        self.assertEqual(T.client("m1").get(f"/api/ai/c/{chat}").status_code, 404)
+        self.assertEqual(T.client("c").post("/api/ai/new", json={}, headers=H).status_code, 403)
 
-    def test_brief_and_limit(self):
-        ai.ask = lambda s, messages, **kw: ("- Начните с просроченной задачи", 10)
+    def test_auto_mode_and_rights_are_checked_by_tools(self):
+        # Сотрудник без права «Агент без подтверждений» — авто не включить; чужой проект менять нельзя
+        self.script = [json.dumps({"say": "", "calls": [{"tool": "set_person_tags", "args": {"member_id": "m1",
+                                                                                           "add": ["руководитель лаборатории"]}}]}),
+                       json.dumps({"say": "Не могу.", "calls": []})]
+        m1 = T.client("m1")
+        chat = m1.post("/api/ai/new", json={"mode": "auto"}, headers=H).get_json()["chat"]["id"]
+        self.assertEqual(m1.get(f"/api/ai/c/{chat}").get_json()["mode"], "manual")
+        m1.post(f"/api/ai/c/{chat}/send", data={"text": "Сделай меня руководителем"}, headers=H)
+        data = self._wait(m1, chat, lambda d: not d["run"] and any(i["type"] == "usage" for i in d["items"]))
+        tool = [i for i in data["items"] if i["type"] == "tool"][0]
+        self.assertEqual((tool["status"], tool["summary"]), ("error", "нет права"))
+        with M.Session() as s:
+            self.assertNotIn("руководитель лаборатории", s.get(M.Member, "m1").tags)
+        # Руководитель в авто: заметка ложится в мастерскую сразу, без «Разрешить»
+        self.script = [json.dumps({"say": "", "calls": [{"tool": "desk_add", "args": {"kind": "checklist", "title": "План",
+                                                                                     "items": ["раз", "два"]}},
+                                                        {"tool": "arrange_workshop", "args": {"preset": "grid"}}]})]
+        h = T.client("h")
+        chat = h.post("/api/ai/new", json={"mode": "auto"}, headers=H).get_json()["chat"]["id"]
+        h.post(f"/api/ai/c/{chat}/send", data={"text": "Наведи порядок в мастерской"}, headers=H)
+        data = self._wait(h, chat, lambda d: not d["run"] and any(i["type"] == "usage" for i in d["items"]))
+        self.assertEqual([i["status"] for i in data["items"] if i["type"] == "tool"], ["done", "done"])
+        self.assertIn("desk", [i for i in data["items"] if i["type"] == "usage"][0]["touched"])
+        with M.Session() as s:
+            self.assertTrue(s.query(M.DeskItem).filter_by(member_id="h", title="План").count())
+
+    def test_limit_switches_to_cheap_model(self):
+        with M.Session() as s:
+            s.merge(M.MemberAccess(member_id="m1", allow=[], deny=[], limits={"ai_day_usd": 0.01}))
+            s.query(M.AiSpend).filter_by(member_id="m1").delete()
+            s.add(M.AiSpend(member_id="m1", day=date.today(), model="test-model", requests=1, tokens=1, cost=0.5))
+            s.commit()
+        try:
+            m1 = T.client("m1")
+            page = m1.get("/ai/settings").get_data(as_text=True)
+            self.assertIn("Лимит исчерпан", page)
+            chat = m1.post("/api/ai/new", json={}, headers=H).get_json()["chat"]["id"]
+            m1.post(f"/api/ai/c/{chat}/send", data={"text": "Привет"}, headers=H)
+            data = self._wait(m1, chat, lambda d: not d["run"] and any(i["type"] == "usage" for i in d["items"]))
+            self.assertEqual(self.seen[0][0], "cheap-flash")                         # лимит исчерпан — дешёвая модель
+            self.assertTrue(any("Лимит на ИИ исчерпан" in (i.get("text") or "") for i in data["items"]))
+        finally:
+            with M.Session() as s:
+                s.delete(s.get(M.MemberAccess, "m1"))
+                s.query(M.AiSpend).filter_by(member_id="m1").delete()
+                s.commit()
+
+    def test_brief_and_access(self):
+        ai.ask = lambda s, messages, **kw: ("- Начните с просроченной задачи", 0.0001, "cheap-flash")
         c = T.client("m1")
         self.assertIn("просроченной", c.post("/api/ai/brief", json={"scope": "day"}, headers=H).get_json()["text"])
         self.assertIn("просроченной", c.get("/home").get_data(as_text=True))
@@ -262,11 +339,15 @@ class AiTest(unittest.TestCase):
 
     def test_admin_saves_settings_without_leaking_key(self):
         c = T.client("h")
-        c.post("/admin/ai", data={"base_url": "https://x.invalid/v1", "model": "m", "api_key": "sk-secret-123456",
-                                  "roles": ["head", "member"], "daily": "10"}, headers=H)
+        c.post("/admin/ai", data={"base_url": "https://x.invalid/v1", "model": "test-model", "api_key": "sk-secret-123456",
+                                  "team_pick": ["cheap-flash"], "reasoning": "medium"}, headers=H)
         page = c.get("/admin/ai").get_data(as_text=True)
         self.assertNotIn("sk-secret-123456", page)
         self.assertIn("sk-…3456", page)
+        with M.Session() as s:
+            cfg = ai.settings(s)
+            self.assertEqual((cfg["team"], cfg["reasoning"]), (["cheap-flash"], "medium"))
+        self.assertEqual(c.get("/ai/settings").status_code, 200)
 
 
 class ProfileTest(unittest.TestCase):

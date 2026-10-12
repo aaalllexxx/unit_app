@@ -78,7 +78,7 @@
         {% endfor %}</div>
       </div>
     </div>
-    {% else %}<div class="empty">Проект ещё не разбит на части. Часть — модуль, сервис или исследование со своим этапом и процентом готовности.{% if ai_on and editable %}<br><button class="btn btn-ghost btn-sm" type="button" style="margin-top: 12px" data-ai-open data-ask="Предложи, на какие части разбить проект «{{ p.title }}», действиями part.">{{ icon('spark', 14) }}Предложить части</button>{% endif %}</div>{% endfor %}
+    {% else %}<div class="empty">Проект ещё не разбит на части. Часть — модуль, сервис или исследование со своим этапом и процентом готовности.{% if ai_on and editable %}<br><button class="btn btn-ghost btn-sm" type="button" style="margin-top: 12px" data-ai-open data-ask="Предложи, на какие части разбить проект «{{ p.title }}», и добавь их.">{{ icon('spark', 14) }}Предложить части</button>{% endif %}</div>{% endfor %}
     {% if editable %}
     <form method="post" action="/p/{{ p.id }}/part" class="panel-foot form-row">
       <input class="input" name="title" placeholder="Новая часть: «Мобильное приложение», «Аудит веб-сервиса»" required>

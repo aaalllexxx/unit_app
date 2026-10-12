@@ -1,62 +1,46 @@
 {% extends 'base.html' %}
 {% from '_icons.html' import icon %}
-{% block title %}ИИ-помощник — Лаборатория UNIT{% endblock %}
-{% block apptitle %}ИИ-помощник{% endblock %}
+{% from '_agent.html' import agent_main %}
+{% block title %}{{ chat.title if chat else 'ИИ-агент' }} — Лаборатория UNIT{% endblock %}
+{% block apptitle %}ИИ-агент{% endblock %}
+
+{# ИИ-агент — чат как у агента наставника в школе (agent.py, static/agent.js).
+   Слева разговоры (на телефоне — шторка), по центру лента; управление — в поле ввода. #}
 {% block content %}
-{% if not ready %}
-<div class="panel center-card"><div class="panel-body stack-sm" style="padding: 30px">
-  <span class="ai-mark" style="width: 46px; height: 46px; border-radius: 14px">{{ icon('spark', 22) }}</span>
-  <h1 style="font-size: 22px; margin-top: 6px">ИИ пока не включён</h1>
-  <p class="muted">Руководитель лаборатории подключает модель в «Обзор → ИИ» и выбирает, кому она доступна.</p>
-</div></div>
-{% else %}
-<div class="chat-page">
-  <aside class="panel threads-box">
-    <div class="panel-head" style="padding: 10px 14px">
-      <button class="btn btn-primary btn-sm btn-block" type="button" data-chat-new>{{ icon('plus', 15) }}Новый чат</button>
+<div class="ac {{ 'is-empty' if not chat }}" data-agent-app data-chat="{{ chat.id if chat else '' }}"
+     data-context="{{ chat.context if chat else context }}" data-ask="{{ ask }}">
+  <aside class="ac-side" data-side>
+    <div class="ac-side-head">
+      <button class="ac-new" type="button" data-new>{{ icon('pen', 15) }}<span>Новый чат</span></button>
+      <button class="ac-icon ac-side-close" type="button" data-side-close aria-label="Закрыть список">{{ icon('x', 16) }}</button>
     </div>
-    <div class="panel-body threads" style="overflow-y: auto; max-height: calc(100vh - 280px); padding: 8px">
-      <div class="thread-section-label">Недавние</div>
-      <div class="thread-item {{ 'on' if thread == 'me' }}">
-        <a href="/ai?chat=me" class="truncate">{{ icon('user', 15) }}<span>Личный диалог</span></a>
-      </div>
+    <button class="ac-side-link" type="button" data-memory-open>{{ icon('star', 15) }}<span>Память агента</span></button>
+    <a class="ac-side-link" href="/ai/settings">{{ icon('settings', 15) }}<span>Настройки и лимиты</span></a>
+    <div class="ac-list" data-list>
+      <p class="ac-list-label">Недавние</p>
       {% for c in chats %}
-      <div class="thread-item {{ 'on' if thread == c.id }}">
-        <a href="/ai?chat={{ c.id }}" class="truncate">{{ icon('chat', 15) }}<span title="{{ c.title }}">{{ c.title }}</span></a>
-        <button class="icon-btn thread-del" type="button" data-chat-del="{{ c.id }}" title="Удалить чат" aria-label="Удалить чат">{{ icon('trash', 13) }}</button>
+      <div class="ac-chat {{ 'is-on' if chat and c.id == chat.id }}" data-chat-link="{{ c.id }}">
+        <a href="/ai/{{ c.id }}"><span>{{ c.title }}</span>{% if c.live %}<i class="ac-dot" title="Агент работает"></i>{% endif %}</a>
+        <button type="button" class="ac-chat-del" data-del-chat="{{ c.id }}" title="Удалить чат" aria-label="Удалить чат">{{ icon('trash', 14) }}</button>
       </div>
       {% endfor %}
-      {% if projects %}
-      <div class="thread-section-label" style="margin-top: 10px">По проектам</div>
-      {% for p in projects %}
-      <div class="thread-item {{ 'on' if thread == 'p' ~ p.id }}">
-        <a href="/ai?chat=p{{ p.id }}" class="truncate">{{ icon('folder', 15) }}<span title="{{ p.title }}">{{ p.title }}</span></a>
-      </div>
-      {% endfor %}
-      {% endif %}
+      <p class="ac-list-empty" {{ 'hidden' if chats }}>Здесь появятся разговоры с агентом</p>
     </div>
-    <div class="panel-foot tiny faint">Осталось запросов сегодня: {{ left if left < 100000 else 'без ограничения' }}</div>
   </aside>
-  <main class="panel chat-box">
-    <div class="panel-head chat-head">
-      <div class="chat-head-left">
-        <span class="ai-mark sm">{{ icon('spark', 15) }}</span>
-        <div class="chat-head-titles">
-          <h3 class="truncate" style="font-size: 15px; margin: 0; font-weight: 600">{{ current_title }}</h3>
-          <span class="ai-head-pill">UNIT Agent</span>
-        </div>
-      </div>
-      <div class="chat-head-actions">
-        {% if thread.startswith('c_') %}
-        <button class="btn btn-quiet btn-sm" type="button" data-chat-del="{{ thread }}">{{ icon('trash', 14) }}Удалить чат</button>
-        {% else %}
-        <button class="btn btn-quiet btn-sm" type="button" data-chat-clear>{{ icon('trash', 14) }}Очистить</button>
-        {% endif %}
-      </div>
-    </div>
-    {% set chat_thread = thread %}{% set chat_ask = ask %}
-    {% include '_chat.html' %}
-  </main>
+  <div class="ac-scrim" data-side-scrim hidden></div>
+
+  <dialog class="ac-mem" data-memory aria-label="Память агента">
+    <div class="ac-mem-head"><b>Память агента</b>
+      <button class="ac-icon" type="button" data-memory-close aria-label="Закрыть">{{ icon('x', 16) }}</button></div>
+    <p class="ac-muted">Что агент помнит о вас во всех чатах: роль, проекты, договорённости, как вам удобнее. Лишнее — удалите.</p>
+    <ul class="ac-mem-list" data-memory-list></ul>
+    <form class="ac-mem-add" data-memory-form>
+      <input name="text" maxlength="500" placeholder="Например: «отчёты — коротко, списком»" aria-label="Новая запись">
+      <button type="submit" class="ac-ok">Запомнить</button>
+    </form>
+  </dialog>
+
+  {{ agent_main() }}
 </div>
-{% endif %}
+<script type="application/json" id="agent-boot">{{ boot | tojson }}</script>
 {% endblock %}

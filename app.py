@@ -8,7 +8,8 @@
 Кто что видит и может — решают права (access.py): теги аккаунта UNIT, правила
 тегов и личные исключения, всё настраивается в разделе «Доступы». Теги-кабинеты
 (руководитель лаборатории, лид команды, сотрудник, заказчик) переключаются, как
-кабинеты в школе. Модули: desk.py — мастерская, assist.py — ИИ-агент,
+кабинеты в школе. Модули: desk.py — мастерская, agent.py — ИИ-агент (инструменты — agent_tools.py),
+assist.py — сводки ИИ,
 control.py — сигналы и контроль выполнения, rights.py — раздел «Доступы».
 """
 
@@ -1433,6 +1434,10 @@ import control  # noqa: E402,F401
 import desk  # noqa: E402,F401
 import rights  # noqa: E402,F401
 import support  # noqa: E402,F401
+import agent  # noqa: E402
+import agent_tools  # noqa: E402,F401
 import unitid  # noqa: E402
+
+agent.migrate_old_messages()
 
 unitid.start()
