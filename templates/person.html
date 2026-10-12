@@ -49,7 +49,7 @@
       <div class="rows">{% for c in checkins %}
         <div class="r" style="align-items: flex-start"><span class="mono tiny faint" style="width: 42px; padding-top: 2px">{{ c.day.strftime('%d.%m') }}</span>
           <div class="grow stack-xs small">{% if c.done %}<span><b>Сделано:</b> {{ c.done }}</span>{% endif %}{% if c.plan %}<span class="muted"><b>Дальше:</b> {{ c.plan }}</span>{% endif %}{% if c.blockers %}<span style="color: var(--danger)"><b>Мешает:</b> {{ c.blockers }}</span>{% endif %}</div>
-          <span>{{ ['😣', '😕', '🙂', '😊', '🚀'][(c.mood or 3) - 1] }}</span></div>
+          <span class="chip tiny">{{ ['Тяжело', 'Непросто', 'Нормально', 'Хорошо', 'Отлично'][(c.mood or 3) - 1] }}</span></div>
       {% endfor %}</div>
     </div>
     {% endif %}

@@ -1645,3 +1645,231 @@ body:has(.wd) { overflow: hidden; }
 .wtool-box { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px; gap: 10px; }
 
 
+
+
+/* ── Блокировка приложения и сессии (PIN-код) ───────────────────────── */
+html.app-locked body {
+  overflow: hidden !important;
+}
+html.app-locked .shell,
+html.app-locked .view,
+html.app-locked .side,
+html.app-locked .appbar,
+html.app-locked .main {
+  filter: blur(18px) !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  transition: filter .3s ease;
+}
+
+.unit-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 14, 22, 0.88);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  padding: 20px;
+  opacity: 1;
+  transition: opacity .25s ease, visibility .25s ease;
+}
+.unit-lock-overlay[hidden] {
+  display: none !important;
+}
+
+.unit-lock-box {
+  max-width: 380px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #f3f4f8;
+  margin: auto;
+  animation: unit-lock-pop .3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes unit-lock-pop {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.unit-lock-brand {
+  margin-bottom: 18px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+.unit-lock-brand .logo,
+.unit-lock-brand .unit-lock-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+}
+
+.unit-lock-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.unit-lock-sub {
+  font-size: 13.5px;
+  color: #9aa1b8;
+  margin: 0 0 22px;
+  line-height: 1.45;
+  min-height: 20px;
+  transition: color .2s;
+}
+.unit-lock-sub.error-msg {
+  color: #f87171 !important;
+  font-weight: 500;
+}
+.unit-lock-sub.success-msg {
+  color: #34d399 !important;
+  font-weight: 500;
+}
+
+.unit-pin-dots {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-bottom: 26px;
+  transition: transform .2s ease;
+}
+
+.unit-pin-dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  transition: all .2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.unit-pin-dot.filled {
+  background: var(--accent, #5b6bf0);
+  border-color: var(--accent, #5b6bf0);
+  transform: scale(1.15);
+  box-shadow: 0 0 16px rgba(91, 107, 240, 0.65);
+}
+.unit-pin-dots.error .unit-pin-dot {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.65) !important;
+}
+.unit-pin-dots.success .unit-pin-dot {
+  background: #10b981 !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.65) !important;
+}
+.unit-pin-dots.shake {
+  animation: unit-pin-shake .4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+@keyframes unit-pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-12px); }
+  40%, 80% { transform: translateX(12px); }
+}
+
+.unit-setup-steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+.unit-step-pill {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9aa1b8;
+  transition: all .2s;
+  border: 1px solid transparent;
+}
+.unit-step-pill.on {
+  background: rgba(91, 107, 240, 0.22);
+  color: #c7d2fe;
+  border-color: rgba(91, 107, 240, 0.45);
+  font-weight: 600;
+}
+
+.unit-dial-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 14px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.unit-dial-key {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 600;
+  font-family: var(--mono, 'JetBrains Mono', monospace);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .15s, transform .12s, border-color .15s;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.unit-dial-key:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.unit-dial-key:active {
+  background: rgba(91, 107, 240, 0.35);
+  border-color: rgba(91, 107, 240, 0.6);
+  transform: scale(0.92);
+}
+.unit-dial-key.unit-dial-back {
+  font-size: 18px;
+  color: #c7d2fe;
+}
+.unit-dial-dummy {
+  width: 72px;
+  height: 72px;
+}
+
+.unit-lock-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+.unit-lock-forgot {
+  font-size: 13px;
+  color: #9aa1b8;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  transition: color .15s;
+}
+.unit-lock-forgot:hover {
+  color: #ffffff;
+}
+.unit-lock-hint {
+  font-size: 12px;
+  color: #717b9b;
+  max-width: 280px;
+  line-height: 1.4;
+}

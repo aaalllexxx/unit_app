@@ -156,7 +156,7 @@
     <label class="field"><span class="label">Что дальше</span><textarea class="textarea" name="plan" data-autosize rows="2" placeholder="Над чем работаю">{{ checkin.plan if checkin }}</textarea></label>
     <label class="field"><span class="label">Что мешает</span><textarea class="textarea" name="blockers" data-autosize rows="1" placeholder="Пусто — если ничего">{{ checkin.blockers if checkin }}</textarea></label>
     <div class="field"><span class="label">Настроение</span>
-      <div class="mood">{% for n, e in [(1, '😣'), (2, '😕'), (3, '🙂'), (4, '😊'), (5, '🚀')] %}<label><input type="radio" name="mood" value="{{ n }}" {{ 'checked' if (checkin.mood if checkin else 3) == n }}><span>{{ e }}</span></label>{% endfor %}</div></div>
+      <div class="mood">{% for n, lbl in [(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5')] %}<label title="{{ ['Тяжело', 'Непросто', 'Нормально', 'Хорошо', 'Отлично'][n - 1] }}"><input type="radio" name="mood" value="{{ n }}" {{ 'checked' if (checkin.mood if checkin else 3) == n }}><span class="mono" style="font-weight: 600">{{ lbl }}</span></label>{% endfor %}</div></div>
   </form>
   <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Отмена</button><button class="btn btn-primary" type="submit" form="checkin-form">{{ icon('check', 15) }}Записать</button></div>
 </dialog>

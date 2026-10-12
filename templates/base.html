@@ -18,11 +18,26 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Лаборатория">
+  <script>
+    (function(){
+      try {
+        var u = "{{ me.id if me else '' }}";
+        if (!u) return;
+        var locked = localStorage.getItem('unit_locked_' + u) === '1';
+        var lastAct = parseInt(localStorage.getItem('unit_last_act_' + u) || '0', 10);
+        var navTime = parseInt(sessionStorage.getItem('unit_nav_time') || '0', 10);
+        var isInternal = navTime && (Date.now() - navTime < 10000);
+        if (locked || (!isInternal && lastAct && (Date.now() - lastAct > 60000))) {
+          document.documentElement.classList.add('app-locked');
+        }
+      } catch(e) {}
+    })();
+  </script>
   <script src="{{ asset('/static/unit.js') }}" defer></script>
   {% if me and me.perms %}<script src="{{ asset('/static/lab.js') }}" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
 </head>
-<body data-haptics="{{ '1' if haptics else '0' }}">
+<body data-user-id="{{ me.id if me else '' }}" data-haptics="{{ '1' if haptics else '0' }}">
 {{ sprite() }}
 {% block body %}
 {% set here = request.path %}
@@ -69,6 +84,7 @@
         <div class="who"><b>{{ me.name }}</b>
           {% if me.views|length > 1 %}<button class="role-switch" type="button" data-sheet-open="view-sheet">{{ view_titles[me.view] }}{{ icon('down', 12) }}</button>
           {% elif me.view %}<span>{{ view_titles[me.view] }}</span>{% endif %}</div>
+        <button class="btn btn-quiet btn-icon btn-sm" type="button" data-lock-app title="Заблокировать сессию" aria-label="Заблокировать">{{ icon('lock', 17) }}</button>
         <a class="btn btn-quiet btn-icon btn-sm" href="/logout" title="Выйти" aria-label="Выйти">{{ icon('logout', 17) }}</a>
       </div>
     </div>
@@ -83,6 +99,7 @@
       <div class="topbar-actions">
         {% if running %}<a class="timer-pill" href="/time" data-timer="{{ running.started_at.isoformat() }}" title="Идёт таймер"><span class="live-dot"></span><span data-timer-text>0:00</span></a>{% endif %}
         {% if ai_on %}<button class="ai-btn hide-sm" type="button" data-ai-open>{{ icon('spark', 16) }}Спросить агента</button>{% endif %}
+        <button class="icon-btn" type="button" data-lock-app title="Заблокировать сессию" aria-label="Заблокировать">{{ icon('lock', 20) }}</button>
         <a class="icon-btn" href="/notices" title="Уведомления" aria-label="Уведомления" data-bell>{{ icon('bell', 20) }}{% if unread %}<span class="dot-badge">{{ unread if unread < 100 else '99+' }}</span>{% endif %}</a>
         <a class="avatar only-sm" href="{{ '/people/' ~ me.id if can('page.people') else issuer ~ '/apps' }}" title="Профиль">{{ initials(me.name) }}</a>
       </div>
@@ -127,6 +144,10 @@
     {% endif %}
     <label class="toggle-row"><span class="grow"><b>Вибрация</b><span>Лёгкий отклик на нажатия и действия</span></span>
       <span class="switch"><input type="checkbox" data-haptics-toggle {{ 'checked' if haptics }}><i></i></span></label>
+    <div style="display: flex; gap: 8px; margin-top: 10px">
+      <button class="btn btn-quiet btn-sm" type="button" data-change-pin style="flex: 1">{{ icon('key', 16) }}Сменить PIN</button>
+      <button class="btn btn-quiet btn-sm" type="button" data-lock-app style="flex: 1">{{ icon('lock', 16) }}Заблокировать</button>
+    </div>
   </div>
   <div class="sheet-foot"><a class="btn btn-ghost" href="/logout">{{ icon('logout', 16) }}Выйти</a></div>
 </dialog>
@@ -161,5 +182,6 @@
 {% endif %}
 {% endif %}
 {% endblock %}
+{% if me %}{% include '_app_lock.html' %}{% endif %}
 </body>
 </html>

@@ -402,6 +402,15 @@ class SupportSectionTest(unittest.TestCase):
         with M.Session() as s:
             self.assertIsNone(s.get(M.SupportTicket, tid))
 
+    def test_app_lock_elements(self):
+        c = T.client("h")
+        r = c.get("/home")
+        self.assertEqual(r.status_code, 200)
+        page = r.get_data(as_text=True)
+        self.assertIn('id="unit-app-lock"', page)
+        self.assertIn('id="unit-pin-setup"', page)
+        self.assertIn('data-lock-app', page)
+        self.assertIn('data-change-pin', page)
 
 
 if __name__ == "__main__":

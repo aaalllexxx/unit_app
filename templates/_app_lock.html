@@ -1,0 +1,96 @@
+{% from '_icons.html' import icon, logo %}
+{# ── Оверлей блокировки приложения (PIN-код) ── #}
+<div id="unit-app-lock" class="unit-lock-overlay" hidden aria-modal="true" role="dialog" aria-label="Блокировка приложения">
+  <div class="unit-lock-box">
+    <div class="unit-lock-brand">
+      <span class="unit-lock-logo">{{ logo('ID' if 'ID' in (title or '') or 'UNIT ID' in (title or '') else 'Лаборатория') }}</span>
+    </div>
+    <h2 class="unit-lock-title">Сессия заблокирована</h2>
+    <p class="unit-lock-sub" id="unit-lock-msg">Введите 6-значный код доступа</p>
+    
+    <div class="unit-pin-dots" id="unit-lock-dots" aria-hidden="true">
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+    </div>
+    
+    <div class="unit-dial-pad" data-pad="lock">
+      <button type="button" class="unit-dial-key" data-num="1">1</button>
+      <button type="button" class="unit-dial-key" data-num="2">2</button>
+      <button type="button" class="unit-dial-key" data-num="3">3</button>
+      <button type="button" class="unit-dial-key" data-num="4">4</button>
+      <button type="button" class="unit-dial-key" data-num="5">5</button>
+      <button type="button" class="unit-dial-key" data-num="6">6</button>
+      <button type="button" class="unit-dial-key" data-num="7">7</button>
+      <button type="button" class="unit-dial-key" data-num="8">8</button>
+      <button type="button" class="unit-dial-key" data-num="9">9</button>
+      <div class="unit-dial-dummy"></div>
+      <button type="button" class="unit-dial-key" data-num="0">0</button>
+      <button type="button" class="unit-dial-key unit-dial-back" data-act="del" aria-label="Стереть">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path>
+          <line x1="18" y1="9" x2="12" y2="15"></line>
+          <line x1="12" y1="9" x2="18" y2="15"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="unit-lock-foot">
+      <a href="/logout" class="unit-lock-forgot" id="unit-lock-logout">Забыли код? Выйти из аккаунта</a>
+    </div>
+  </div>
+</div>
+
+{# ── Оверлей установки / смены PIN-кода ── #}
+<div id="unit-pin-setup" class="unit-lock-overlay" hidden aria-modal="true" role="dialog" aria-label="Установка кода доступа">
+  <div class="unit-lock-box">
+    <div class="unit-lock-brand">
+      <span class="unit-lock-logo">{{ logo('ID' if 'ID' in (title or '') or 'UNIT ID' in (title or '') else 'Лаборатория') }}</span>
+    </div>
+    <h2 class="unit-lock-title" id="unit-setup-title">Придумайте код доступа</h2>
+    <p class="unit-lock-sub" id="unit-setup-msg">Шестизначный пароль для защиты сессии</p>
+    
+    <div class="unit-pin-dots" id="unit-setup-dots" aria-hidden="true">
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+      <span class="unit-pin-dot"></span>
+    </div>
+    
+    <div class="unit-setup-steps" id="unit-setup-steps">
+      <span class="unit-step-pill on" id="unit-pill-1">1. Придумайте код</span>
+      <span class="unit-step-pill" id="unit-pill-2">2. Повторите</span>
+    </div>
+
+    <div class="unit-dial-pad" data-pad="setup">
+      <button type="button" class="unit-dial-key" data-num="1">1</button>
+      <button type="button" class="unit-dial-key" data-num="2">2</button>
+      <button type="button" class="unit-dial-key" data-num="3">3</button>
+      <button type="button" class="unit-dial-key" data-num="4">4</button>
+      <button type="button" class="unit-dial-key" data-num="5">5</button>
+      <button type="button" class="unit-dial-key" data-num="6">6</button>
+      <button type="button" class="unit-dial-key" data-num="7">7</button>
+      <button type="button" class="unit-dial-key" data-num="8">8</button>
+      <button type="button" class="unit-dial-key" data-num="9">9</button>
+      <div class="unit-dial-dummy"></div>
+      <button type="button" class="unit-dial-key" data-num="0">0</button>
+      <button type="button" class="unit-dial-key unit-dial-back" data-act="del" aria-label="Стереть">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path>
+          <line x1="18" y1="9" x2="12" y2="15"></line>
+          <line x1="12" y1="9" x2="18" y2="15"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="unit-lock-foot">
+      <span class="unit-lock-hint" id="unit-setup-hint">Код защищает сессию при выходе из приложения или неактивности</span>
+      <button type="button" class="unit-lock-forgot" id="unit-setup-cancel" style="display: none">Отмена</button>
+    </div>
+  </div>
+</div>

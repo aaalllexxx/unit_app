@@ -245,11 +245,519 @@
     });
     UNIT.autosize = autosize;
 
+    /* ── Блокировка приложения и сессии (PIN-код) ─────────────────────────── */
+    (function () {
+        var AppLock = UNIT.AppLock = {};
+
+        var uid = '';
+        var PIN_KEY = '';
+        var LOCKED_KEY = '';
+        var LAST_ACT_KEY = '';
+        var HIDDEN_AT_KEY = '';
+        var AWAY_TIMEOUT = 60 * 1000;   // 60 сек вне приложения/вкладки
+        var IDLE_TIMEOUT = 180 * 1000;  // 3 мин неактивности
+
+        var awayTimer = null;
+        var idleTimer = null;
+        var lastTouch = 0;
+
+        var lockInput = '';
+        var setupMode = 'setup_1'; // 'setup_1', 'setup_2', 'change_old', 'change_new', 'change_confirm'
+        var setupPin1 = '';
+        var setupPin2 = '';
+
+        async function computeHash(pin, salt) {
+            var combined = (salt || '') + ':' + pin;
+            if (window.crypto && window.crypto.subtle) {
+                try {
+                    var buf = new TextEncoder().encode(combined);
+                    var hashBuf = await window.crypto.subtle.digest('SHA-256', buf);
+                    var hashArr = Array.from(new Uint8Array(hashBuf));
+                    return hashArr.map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+                } catch (e) {}
+            }
+            var h1 = 0xdeadbeef ^ 0, h2 = 0x41c6ce57 ^ 0;
+            for (var i = 0; i < combined.length; i++) {
+                var ch = combined.charCodeAt(i);
+                h1 = Math.imul(h1 ^ ch, 2654435761);
+                h2 = Math.imul(h2 ^ ch, 1597334677);
+            }
+            h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+            h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+            return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+        }
+
+        function generateSalt() {
+            var arr = new Uint8Array(16);
+            if (window.crypto && window.crypto.getRandomValues) {
+                window.crypto.getRandomValues(arr);
+            } else {
+                for (var i = 0; i < 16; i++) arr[i] = Math.floor(Math.random() * 256);
+            }
+            return Array.from(arr).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+        }
+
+        function getStoredData() {
+            try {
+                var raw = localStorage.getItem(PIN_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function setStoredData(data) {
+            try {
+                if (data) localStorage.setItem(PIN_KEY, JSON.stringify(data));
+                else localStorage.removeItem(PIN_KEY);
+            } catch (e) {}
+        }
+
+        AppLock.hasPin = function () {
+            var d = getStoredData();
+            return !!(d && d.hash && d.salt);
+        };
+
+        AppLock.isLocked = function () {
+            try {
+                return localStorage.getItem(LOCKED_KEY) === '1';
+            } catch (e) {
+                return false;
+            }
+        };
+
+        AppLock.lock = function () {
+            if (!AppLock.hasPin()) return;
+            try { localStorage.setItem(LOCKED_KEY, '1'); } catch (e) {}
+            root.classList.add('app-locked');
+            var overlay = document.getElementById('unit-app-lock');
+            if (overlay) {
+                overlay.hidden = false;
+                overlay.removeAttribute('hidden');
+                overlay.style.display = 'flex';
+            }
+            var setup = document.getElementById('unit-pin-setup');
+            if (setup) {
+                setup.hidden = true;
+                setup.style.display = 'none';
+            }
+            lockInput = '';
+            renderLockDots();
+            setLockMessage('Введите 6-значный код доступа');
+            UNIT.haptic('warn');
+        };
+
+        AppLock.unlock = function () {
+            try {
+                localStorage.removeItem(LOCKED_KEY);
+                localStorage.setItem(LAST_ACT_KEY, Date.now());
+            } catch (e) {}
+            root.classList.remove('app-locked');
+            var overlay = document.getElementById('unit-app-lock');
+            if (overlay) {
+                overlay.hidden = true;
+                overlay.style.display = 'none';
+            }
+            lockInput = '';
+            renderLockDots();
+            resetIdleTimer();
+            UNIT.haptic('success');
+        };
+
+        function setLockMessage(msg, isError, isSuccess) {
+            var el = document.getElementById('unit-lock-msg');
+            if (!el) return;
+            el.textContent = msg;
+            el.classList.toggle('error-msg', !!isError);
+            el.classList.toggle('success-msg', !!isSuccess);
+        }
+
+        function renderLockDots(state) {
+            var dotsBox = document.getElementById('unit-lock-dots');
+            if (!dotsBox) return;
+            dotsBox.classList.remove('error', 'success', 'shake');
+            if (state === 'error') dotsBox.classList.add('error', 'shake');
+            if (state === 'success') dotsBox.classList.add('success');
+            var dots = dotsBox.querySelectorAll('.unit-pin-dot');
+            dots.forEach(function (dot, idx) {
+                dot.classList.toggle('filled', idx < lockInput.length);
+            });
+        }
+
+        async function verifyLockPin() {
+            var data = getStoredData();
+            if (!data) {
+                AppLock.unlock();
+                return;
+            }
+            var h = await computeHash(lockInput, data.salt);
+            if (h === data.hash) {
+                renderLockDots('success');
+                setLockMessage('Сессия разблокирована', false, true);
+                setTimeout(function () {
+                    AppLock.unlock();
+                }, 220);
+            } else {
+                UNIT.haptic('error');
+                renderLockDots('error');
+                setLockMessage('Неверный код доступа', true, false);
+                setTimeout(function () {
+                    lockInput = '';
+                    renderLockDots();
+                    setLockMessage('Введите 6-значный код доступа');
+                }, 600);
+            }
+        }
+
+        AppLock.handleLockDigit = function (digit) {
+            if (lockInput.length >= 6) return;
+            lockInput += digit;
+            UNIT.haptic('tap');
+            renderLockDots();
+            if (lockInput.length === 6) {
+                verifyLockPin();
+            }
+        };
+
+        AppLock.handleLockBack = function () {
+            if (lockInput.length > 0) {
+                lockInput = lockInput.slice(0, -1);
+                UNIT.haptic('tap');
+                renderLockDots();
+            }
+        };
+
+        // ── Установка и смена PIN-кода ──
+        AppLock.openSetup = function (mode) {
+            setupMode = mode || 'setup';
+            setupPin1 = '';
+            setupPin2 = '';
+            var overlay = document.getElementById('unit-pin-setup');
+            if (!overlay) return;
+            overlay.hidden = false;
+            overlay.removeAttribute('hidden');
+            overlay.style.display = 'flex';
+            root.classList.add('app-locked');
+
+            var cancelBtn = document.getElementById('unit-setup-cancel');
+            if (cancelBtn) {
+                cancelBtn.style.display = (setupMode === 'change') ? 'inline-block' : 'none';
+            }
+
+            if (setupMode === 'change') {
+                setupMode = 'change_old';
+                setSetupStep('Подтверждение', 'Введите текущий 6-значный код', 0);
+            } else {
+                setupMode = 'setup_1';
+                setSetupStep('Придумайте код доступа', 'Шестизначный пароль для защиты сессии', 1);
+            }
+            renderSetupDots();
+        };
+
+        AppLock.closeSetup = function () {
+            var overlay = document.getElementById('unit-pin-setup');
+            if (overlay) {
+                overlay.hidden = true;
+                overlay.style.display = 'none';
+            }
+            if (!AppLock.isLocked()) {
+                root.classList.remove('app-locked');
+            }
+            setupPin1 = '';
+            setupPin2 = '';
+        };
+
+        function setSetupStep(title, msg, stepIdx, isError, isSuccess) {
+            var titleEl = document.getElementById('unit-setup-title');
+            var msgEl = document.getElementById('unit-setup-msg');
+            var pill1 = document.getElementById('unit-pill-1');
+            var pill2 = document.getElementById('unit-pill-2');
+            if (titleEl) titleEl.textContent = title;
+            if (msgEl) {
+                msgEl.textContent = msg;
+                msgEl.classList.toggle('error-msg', !!isError);
+                msgEl.classList.toggle('success-msg', !!isSuccess);
+            }
+            if (pill1 && pill2) {
+                if (stepIdx === 0) {
+                    pill1.textContent = '1. Текущий код';
+                    pill2.textContent = '2. Новый код';
+                    pill1.classList.add('on');
+                    pill2.classList.remove('on');
+                } else if (stepIdx === 1) {
+                    pill1.textContent = '1. Придумайте код';
+                    pill2.textContent = '2. Повторите';
+                    pill1.classList.add('on');
+                    pill2.classList.remove('on');
+                } else if (stepIdx === 2) {
+                    pill1.classList.remove('on');
+                    pill2.classList.add('on');
+                }
+            }
+        }
+
+        function renderSetupDots(state) {
+            var dotsBox = document.getElementById('unit-setup-dots');
+            if (!dotsBox) return;
+            dotsBox.classList.remove('error', 'success', 'shake');
+            if (state === 'error') dotsBox.classList.add('error', 'shake');
+            if (state === 'success') dotsBox.classList.add('success');
+            var currentStr = (setupMode === 'setup_1' || setupMode === 'change_old' || setupMode === 'change_new') ? setupPin1 : setupPin2;
+            var dots = dotsBox.querySelectorAll('.unit-pin-dot');
+            dots.forEach(function (dot, idx) {
+                dot.classList.toggle('filled', idx < currentStr.length);
+            });
+        }
+
+        async function processSetupStep() {
+            if (setupMode === 'change_old') {
+                var data = getStoredData();
+                var h = await computeHash(setupPin1, data ? data.salt : '');
+                if (data && h === data.hash) {
+                    UNIT.haptic('success');
+                    renderSetupDots('success');
+                    setTimeout(function () {
+                        setupMode = 'change_new';
+                        setupPin1 = '';
+                        setSetupStep('Новый код доступа', 'Придумайте новый 6-значный код', 1);
+                        renderSetupDots();
+                    }, 250);
+                } else {
+                    UNIT.haptic('error');
+                    renderSetupDots('error');
+                    setSetupStep('Подтверждение', 'Неверный текущий код', 0, true);
+                    setTimeout(function () {
+                        setupPin1 = '';
+                        renderSetupDots();
+                        setSetupStep('Подтверждение', 'Введите текущий 6-значный код', 0);
+                    }, 600);
+                }
+            } else if (setupMode === 'setup_1' || setupMode === 'change_new') {
+                UNIT.haptic('tap');
+                renderSetupDots();
+                setupMode = (setupMode === 'setup_1') ? 'setup_2' : 'change_confirm';
+                setupPin2 = '';
+                setSetupStep('Повторите код доступа', 'Введите код ещё раз для подтверждения', 2);
+                renderSetupDots();
+            } else if (setupMode === 'setup_2' || setupMode === 'change_confirm') {
+                if (setupPin1 === setupPin2) {
+                    UNIT.haptic('success');
+                    renderSetupDots('success');
+                    setSetupStep('Готово', 'Код доступа успешно установлен', 2, false, true);
+                    var salt = generateSalt();
+                    var hash = await computeHash(setupPin1, salt);
+                    setStoredData({ hash: hash, salt: salt, updatedAt: Date.now() });
+                    try {
+                        localStorage.removeItem(LOCKED_KEY);
+                        localStorage.setItem(LAST_ACT_KEY, Date.now());
+                    } catch (e) {}
+                    setTimeout(function () {
+                        AppLock.closeSetup();
+                        UNIT.toast('Код сессии сохранён');
+                    }, 350);
+                } else {
+                    UNIT.haptic('error');
+                    renderSetupDots('error');
+                    setSetupStep('Коды не совпали', 'Попробуйте придумать код заново', 1, true);
+                    setTimeout(function () {
+                        setupMode = (setupMode === 'setup_2') ? 'setup_1' : 'change_new';
+                        setupPin1 = '';
+                        setupPin2 = '';
+                        renderSetupDots();
+                        setSetupStep('Придумайте код доступа', 'Шестизначный пароль для защиты сессии', 1);
+                    }, 700);
+                }
+            }
+        }
+
+        AppLock.handleSetupDigit = function (digit) {
+            var currentStr = (setupMode === 'setup_1' || setupMode === 'change_old' || setupMode === 'change_new') ? setupPin1 : setupPin2;
+            if (currentStr.length >= 6) return;
+            currentStr += digit;
+            if (setupMode === 'setup_1' || setupMode === 'change_old' || setupMode === 'change_new') setupPin1 = currentStr;
+            else setupPin2 = currentStr;
+            UNIT.haptic('tap');
+            renderSetupDots();
+            if (currentStr.length === 6) {
+                processSetupStep();
+            }
+        };
+
+        AppLock.handleSetupBack = function () {
+            var currentStr = (setupMode === 'setup_1' || setupMode === 'change_old' || setupMode === 'change_new') ? setupPin1 : setupPin2;
+            if (currentStr.length > 0) {
+                currentStr = currentStr.slice(0, -1);
+                if (setupMode === 'setup_1' || setupMode === 'change_old' || setupMode === 'change_new') setupPin1 = currentStr;
+                else setupPin2 = currentStr;
+                UNIT.haptic('tap');
+                renderSetupDots();
+            }
+        };
+
+        function resetIdleTimer() {
+            try { localStorage.setItem(LAST_ACT_KEY, Date.now()); } catch (e) {}
+            clearTimeout(idleTimer);
+            if (!AppLock.isLocked()) {
+                idleTimer = setTimeout(function () {
+                    if (AppLock.hasPin()) AppLock.lock();
+                }, IDLE_TIMEOUT);
+            }
+        }
+
+        function onUserActivity() {
+            var now = Date.now();
+            if (now - lastTouch < 2000) return;
+            lastTouch = now;
+            resetIdleTimer();
+        }
+
+        AppLock.init = function () {
+            uid = (document.body && document.body.getAttribute('data-user-id')) || (window.UNIT && window.UNIT.userId) || '';
+            if (!uid) return;
+
+            PIN_KEY = 'unit_pin_' + uid;
+            LOCKED_KEY = 'unit_locked_' + uid;
+            LAST_ACT_KEY = 'unit_last_act_' + uid;
+            HIDDEN_AT_KEY = 'unit_hidden_at_' + uid;
+
+            var navTime = parseInt(sessionStorage.getItem('unit_nav_time') || '0', 10);
+            sessionStorage.removeItem('unit_nav_time');
+            var isInternal = navTime && (Date.now() - navTime < 10000);
+
+            document.addEventListener('click', function (e) {
+                var a = e.target.closest && e.target.closest('a');
+                if (a && a.href && a.origin === location.origin && !a.target && !a.hasAttribute('download')) {
+                    sessionStorage.setItem('unit_nav_time', Date.now());
+                }
+            }, true);
+            window.addEventListener('beforeunload', function () {
+                sessionStorage.setItem('unit_nav_time', Date.now());
+            });
+
+            ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(function (ev) {
+                window.addEventListener(ev, onUserActivity, { passive: true });
+            });
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') {
+                    var now = Date.now();
+                    try { localStorage.setItem(HIDDEN_AT_KEY, now); } catch (e) {}
+                    clearTimeout(awayTimer);
+                    awayTimer = setTimeout(function () {
+                        if (document.visibilityState === 'hidden' && AppLock.hasPin()) {
+                            try { localStorage.setItem(LOCKED_KEY, '1'); } catch (e) {}
+                        }
+                    }, AWAY_TIMEOUT);
+                } else {
+                    clearTimeout(awayTimer);
+                    var hiddenAt = parseInt(localStorage.getItem(HIDDEN_AT_KEY) || '0', 10);
+                    var isLocked = localStorage.getItem(LOCKED_KEY) === '1';
+                    if (AppLock.hasPin() && (isLocked || (hiddenAt && (Date.now() - hiddenAt >= AWAY_TIMEOUT)))) {
+                        AppLock.lock();
+                    } else if (!AppLock.isLocked()) {
+                        resetIdleTimer();
+                    }
+                    try { localStorage.removeItem(HIDDEN_AT_KEY); } catch (e) {}
+                }
+            });
+
+            window.addEventListener('storage', function (e) {
+                if (e.key === LOCKED_KEY) {
+                    if (e.newValue === '1') AppLock.lock();
+                    else if (!e.newValue) AppLock.unlock();
+                } else if (e.key === PIN_KEY) {
+                    if (AppLock.hasPin()) AppLock.closeSetup();
+                }
+            });
+
+            window.addEventListener('keydown', function (e) {
+                var lockEl = document.getElementById('unit-app-lock');
+                var setupEl = document.getElementById('unit-pin-setup');
+                var isLockOpen = lockEl && !lockEl.hidden && lockEl.style.display !== 'none';
+                var isSetupOpen = setupEl && !setupEl.hidden && setupEl.style.display !== 'none';
+                if (!isLockOpen && !isSetupOpen) return;
+
+                if (e.key >= '0' && e.key <= '9') {
+                    e.preventDefault();
+                    if (isLockOpen) AppLock.handleLockDigit(e.key);
+                    else if (isSetupOpen) AppLock.handleSetupDigit(e.key);
+                } else if (e.key === 'Backspace') {
+                    e.preventDefault();
+                    if (isLockOpen) AppLock.handleLockBack();
+                    else if (isSetupOpen) AppLock.handleSetupBack();
+                }
+            });
+
+            document.addEventListener('click', function (e) {
+                var padKey = e.target.closest && e.target.closest('.unit-dial-key');
+                if (padKey) {
+                    var pad = padKey.closest('[data-pad]');
+                    var isLock = pad && pad.getAttribute('data-pad') === 'lock';
+                    var num = padKey.getAttribute('data-num');
+                    var act = padKey.getAttribute('data-act');
+                    if (num !== null) {
+                        if (isLock) AppLock.handleLockDigit(num);
+                        else AppLock.handleSetupDigit(num);
+                    } else if (act === 'del') {
+                        if (isLock) AppLock.handleLockBack();
+                        else AppLock.handleSetupBack();
+                    }
+                    return;
+                }
+
+                var lockTrigger = e.target.closest && e.target.closest('[data-lock-app]');
+                if (lockTrigger) {
+                    e.preventDefault();
+                    AppLock.lock();
+                    return;
+                }
+
+                var changeTrigger = e.target.closest && e.target.closest('[data-change-pin]');
+                if (changeTrigger) {
+                    e.preventDefault();
+                    AppLock.openSetup('change');
+                    return;
+                }
+
+                var cancelBtn = e.target.closest && e.target.closest('#unit-setup-cancel');
+                if (cancelBtn) {
+                    e.preventDefault();
+                    AppLock.closeSetup();
+                    return;
+                }
+
+                var forgotLink = e.target.closest && e.target.closest('#unit-lock-logout');
+                if (forgotLink) {
+                    try {
+                        localStorage.removeItem(PIN_KEY);
+                        localStorage.removeItem(LOCKED_KEY);
+                        localStorage.removeItem(LAST_ACT_KEY);
+                        localStorage.removeItem(HIDDEN_AT_KEY);
+                    } catch (err) {}
+                }
+            });
+
+            if (!AppLock.hasPin()) {
+                AppLock.openSetup('setup');
+            } else {
+                var lastAct = parseInt(localStorage.getItem(LAST_ACT_KEY) || '0', 10);
+                var isLocked = localStorage.getItem(LOCKED_KEY) === '1';
+                if (isLocked || (!isInternal && lastAct && (Date.now() - lastAct >= AWAY_TIMEOUT))) {
+                    AppLock.lock();
+                } else {
+                    root.classList.remove('app-locked');
+                    resetIdleTimer();
+                }
+            }
+        };
+    })();
+
     function ready() {
         flashesToToasts();
         document.querySelectorAll('[data-tabs]').forEach(setupTabs);
         document.querySelectorAll('textarea[data-autosize]').forEach(autosize);
         document.querySelectorAll('dialog.sheet[data-open]').forEach(function (s) { UNIT.openSheet(s); });
+        if (UNIT.AppLock) UNIT.AppLock.init();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready); else ready();
 

@@ -183,7 +183,7 @@
     <a class="desk-card {{ 'c-' ~ i.color if i.color }}" href="{{ '/desk/file/' ~ i.id if i.kind == 'file' else '/desk?open=' ~ i.id if i.member_id == me.id else '#m' ~ i.id }}">
       <span class="dc-top">{{ kind_icon(i.kind, 13) }}{{ kinds[i.kind] }}{% if not i.shared %}<span class="spacer">только вам</span>{% endif %}</span>
       <h4>{{ i.title or 'Без названия' }}</h4>
-      {% if i.kind == 'checklist' %}<div class="dc-list">{% for c in (i.data or {}).get('items', [])[:6] %}<span class="{{ 'on' if c.done }}">{{ '☑' if c.done else '☐' }} {{ c.text }}</span>{% endfor %}</div>
+      {% if i.kind == 'checklist' %}<div class="dc-list">{% for c in (i.data or {}).get('items', [])[:6] %}<span class="{{ 'on' if c.done }}">{% if c.done %}{{ icon('check', 11) }}{% else %}{{ icon('minus', 11) }}{% endif %} {{ c.text }}</span>{% endfor %}</div>
       {% elif i.kind == 'code' %}<pre class="dc-body">{{ i.body[:600] }}</pre>
       {% elif i.kind == 'link' %}<span class="dc-body" style="color: var(--accent)">{{ (i.data or {}).get('url', '') }}</span>
       {% elif i.body %}<span class="dc-body">{{ i.body[:400] }}</span>{% endif %}

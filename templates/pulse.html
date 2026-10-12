@@ -82,7 +82,7 @@
       <div class="rows">
         {% for c in checkins %}
         <div class="r" style="align-items: flex-start"><span class="avatar sm">{{ initials(names.get(c.member_id, '?')) }}</span>
-          <div class="grow stack-xs small"><b>{{ names.get(c.member_id, '') }} {{ ['😣', '😕', '🙂', '😊', '🚀'][(c.mood or 3) - 1] }}</b>
+          <div class="grow stack-xs small"><b>{{ names.get(c.member_id, '') }} <span class="chip tiny">{{ ['Тяжело', 'Непросто', 'Нормально', 'Хорошо', 'Отлично'][(c.mood or 3) - 1] }}</span></b>
             {% if c.plan %}<span class="muted">{{ c.plan }}</span>{% endif %}
             {% if c.blockers %}<span style="color: var(--danger)"><b>Мешает:</b> {{ c.blockers }}</span>{% endif %}</div></div>
         {% else %}<div class="empty">Сегодня итоги ещё никто не подводил.</div>{% endfor %}
