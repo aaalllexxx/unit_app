@@ -25,8 +25,12 @@ FILES = os.path.join(M.DATA_DIR, "desk")
 MAX_FILE = 25 * 1024 * 1024
 QUOTA = 500 * 1024 * 1024
 INLINE = {"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain"}
-LANGS = ["python", "javascript", "typescript", "sql", "bash", "go", "java", "c", "cpp", "csharp", "html", "css",
-         "json", "yaml", "markdown", "text"]
+LANGS = [
+    "python", "javascript", "typescript", "html", "css", "scss", "json", "markdown",
+    "c", "cpp", "csharp", "java", "kotlin", "go", "rust", "php", "ruby", "sql",
+    "bash", "shell", "yaml", "xml", "swift", "dart", "scala", "r", "lua", "perl",
+    "powershell", "dockerfile", "ini", "text"
+]
 COLORS = ["", "blue", "teal", "amber", "rose", "violet"]
 app.config.setdefault("MAX_CONTENT_LENGTH", MAX_FILE + 1024 * 1024)
 

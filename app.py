@@ -431,8 +431,8 @@ def activity(member_id: str) -> dict:
 def people():
     direction = request.args.get("d")
     rows = staff_members()
-    if direction:
-        rows = [m for m in rows if str(m.direction_id) == direction]
+    if direction and direction.isdigit():
+        rows = [m for m in rows if int(direction) in m.all_direction_ids()]
     dirs = {d.id: d for d in db().scalars(select(M.Direction))}
     teams = {t.id: t for t in db().scalars(select(M.Team))}
     acts = {m.id: activity(m.id) for m in rows}
@@ -482,8 +482,17 @@ def person(mid):
         member.skills = _skills_from(f)
         if head:
             member.grade = f.get("grade", "") if f.get("grade", "") in M.GRADES else ""
-            member.direction_id = int(f["direction_id"]) if f.get("direction_id", "").isdigit() else None
-            member.team_id = int(f["team_id"]) if f.get("team_id", "").isdigit() else None
+            d_list = [int(x) for x in f.getlist("direction_ids") if str(x).isdigit()]
+            if not d_list and f.get("direction_id", "").isdigit():
+                d_list = [int(f["direction_id"])]
+            member.direction_ids = d_list
+            member.direction_id = d_list[0] if d_list else None
+
+            t_list = [int(x) for x in f.getlist("team_ids") if str(x).isdigit()]
+            if not t_list and f.get("team_id", "").isdigit():
+                t_list = [int(f["team_id"])]
+            member.team_ids = t_list
+            member.team_id = t_list[0] if t_list else None
         db().commit()
         flash("Профиль сохранён", "ok")
         return redirect(url_for("person", mid=mid))
@@ -529,7 +538,7 @@ def direction(slug):
         db().commit()
         return redirect(url_for("direction", slug=slug))
     teams = db().scalars(select(M.Team).where(M.Team.direction_id == d.id)).all()
-    members = [m for m in staff_members() if m.direction_id == d.id]
+    members = [m for m in staff_members() if d.id in m.all_direction_ids()]
     projects = [p for p in visible_projects(g.me) if p.direction_id == d.id]
     percents = {p.id: project_percent(db().scalars(select(M.Part).where(M.Part.project_id == p.id)).all()) for p in projects}
     staff = staff_members()
@@ -548,8 +557,10 @@ def teams():
         if f.get("delete", "").isdigit():
             d = db().get(M.Direction, int(f["delete"]))
             if d:
-                for row in db().scalars(select(M.Member).where(M.Member.direction_id == d.id)):
-                    row.direction_id = None
+                for row in db().scalars(select(M.Member)):
+                    if d.id in row.all_direction_ids():
+                        row.direction_ids = [x for x in row.all_direction_ids() if x != d.id]
+                        row.direction_id = row.direction_ids[0] if row.direction_ids else None
                 for row in db().scalars(select(M.Project).where(M.Project.direction_id == d.id)):
                     row.direction_id = None
                 db().delete(d)
@@ -576,7 +587,7 @@ def teams():
     info = {}
     for d in rows:
         projects_ = [p for p in visible_projects(g.me) if p.direction_id == d.id]
-        info[d.id] = {"people": [m for m in members if m.direction_id == d.id], "projects": projects_,
+        info[d.id] = {"people": [m for m in members if d.id in m.all_direction_ids()], "projects": projects_,
                       "active": sum(1 for p in projects_ if p.status == "active"),
                       "lead": db().get(M.Member, d.lead_id) if d.lead_id else None}
     return render_template("teams.html", rows=rows, info=info, tones=TEAM_TONES, icons=TEAM_ICONS)
@@ -1377,7 +1388,10 @@ def common():
             "haptics": (me_.prefs or {}).get("haptics", True) if me_ else True}
 
 
-# Модули портала: мастерская, ИИ-агент, контроль выполнения, доступы, техподдержка, связь с UNIT ID
+# Модули портала: мастерская, ИИ-агент, контроль выполнения, доступы, техподдержка, связь с UNIT ID, API
+import api  # noqa: E402
+app.register_blueprint(api.api_bp)
+
 import assist  # noqa: E402,F401
 import control  # noqa: E402,F401
 import desk  # noqa: E402,F401

@@ -217,3 +217,20 @@ def support_status(ticket_id: int):
 
     return redirect(url_for("support_ticket", ticket_id=ticket.id))
 
+
+@app.post("/support/<int:ticket_id>/delete")
+@need()
+def support_delete(ticket_id: int):
+    ticket = db().get(M.SupportTicket, ticket_id)
+    if not ticket:
+        abort(404)
+
+    if not _is_staff(g.me):
+        abort(403)
+
+    db().delete(ticket)
+    db().commit()
+    flash("Обращение удалено.", "ok")
+    return redirect(url_for("support_home"))
+
+

@@ -75,8 +75,9 @@ def _fmt_task(t, names) -> str:
 def context(person, project_id=None, item_id=None) -> str:
     today = date.today()
     lines = [f"Сегодня {today:%d.%m.%Y}, {WEEKDAYS[today.weekday()]}."]
-    lines.append(f"Человек: {person.name} (id {person.id}), кабинет — {access.view_title(db(), person.view) if person.view else 'без кабинета'}"
-                 + (f", {person.position}" if person.position else "") + ".")
+    view_title = access.view_title(db(), getattr(person, "view", None)) if getattr(person, "view", None) else "без кабинета"
+    pos = f", {person.position}" if getattr(person, "position", None) else ""
+    lines.append(f"Человек: {person.name} (id {person.id}), кабинет — {view_title}{pos}.")
     people = {m.id: m.name for m in db().scalars(select(M.Member))}
     mine = db().scalars(select(M.Task).where(M.Task.assignee_id == person.id, M.Task.column != "done")
                         .order_by(M.Task.due.is_(None), M.Task.due).limit(30)).all()
@@ -146,9 +147,9 @@ def split_actions(text: str) -> tuple:
 
     # 1. Поиск блока в markdown-ограждениях (actions, json, tool_calls, tools или пустой fence)
     patterns = [
-        re.compile(r"```(?:actions|json|tool_calls|tools)?\s*(\[\s*\{[\s\S]*?\}\s*\])\s*```", re.IGNORECASE),
+        re.compile(r"```(?:actions|json|tool_calls|tools)?\s*(\[\s*\{[\s\S]*?\])\s*```", re.IGNORECASE),
         re.compile(r"```actions\s*([\s\S]*?)\s*```", re.IGNORECASE),
-        re.compile(r"```\s*(\[\s*\{[\s\S]*?\"type\"[\s\S]*?\}\s*\])\s*```", re.IGNORECASE),
+        re.compile(r"```\s*(\[\s*\{[\s\S]*?\"type\"[\s\S]*?\])\s*```", re.IGNORECASE),
     ]
 
     matched_span = None
@@ -160,12 +161,19 @@ def split_actions(text: str) -> tuple:
             raw_content = m.group(1).strip()
             break
 
-    # 2. Если в блоке кода не найдено, ищем сырой JSON-массив с "type" в конце текста
+    # 2. Если в блоке кода не найдено, ищем сырой JSON-массив с "type"
     if not matched_span:
-        raw_m = re.search(r"(\[\s*\{\s*\"type\"\s*:[\s\S]*?\}\s*\])\s*$", text)
+        raw_m = re.search(r"(\[\s*\{\s*\"type\"[\s\S]*?\])\s*$", text)
         if raw_m:
             matched_span = (raw_m.start(), raw_m.end())
             raw_content = raw_m.group(1).strip()
+        else:
+            raw_m2 = re.search(r"(?:```(?:actions|json|tool_calls|tools)?)?\s*(\[\s*\{\s*\"type\"[\s\S]*)$", text)
+            if raw_m2:
+                matched_span = (raw_m2.start(), len(text))
+                raw_content = raw_m2.group(1).strip().rstrip("`").strip()
+                if not raw_content.endswith("]"):
+                    raw_content += "]"
 
     if raw_content:
         try:
@@ -173,6 +181,8 @@ def split_actions(text: str) -> tuple:
             if isinstance(raw, list):
                 actions = [a for a in raw if isinstance(a, dict) and a.get("type") in ACTION_TYPES]
         except Exception:
+            pass
+        if not actions:
             # Fallback: вытаскиваем отдельные JSON-объекты регуляркой
             item_pat = re.compile(r"\{[^{}]*?\"type\"\s*:\s*\"[a-zA-Z_]+\"[^{}]*?\}")
             for item_match in item_pat.finditer(raw_content):
@@ -185,6 +195,7 @@ def split_actions(text: str) -> tuple:
 
     if matched_span:
         text = (text[:matched_span[0]] + text[matched_span[1]:]).strip()
+    text = re.sub(r"```(?:actions|json|tool_calls|tools)?\s*```", "", text).strip()
 
     return text, actions
 

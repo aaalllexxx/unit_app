@@ -68,7 +68,9 @@ class Member(Base):
     position: Mapped[str] = mapped_column(String(160), default="")       # должность словами
     grade: Mapped[str] = mapped_column(String(20), default="")
     direction_id: Mapped[Optional[int]] = mapped_column(ForeignKey("directions.id", ondelete="SET NULL"), default=None)
+    direction_ids: Mapped[list] = mapped_column(JSON, default=list)       # [direction_id, ...]
     team_id: Mapped[Optional[int]] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"), default=None)
+    team_ids: Mapped[list] = mapped_column(JSON, default=list)            # [team_id, ...]
     skills: Mapped[list] = mapped_column(JSON, default=list)              # [{"name", "level" 1..5}]
     about: Mapped[str] = mapped_column(Text, default="")
     contacts: Mapped[dict] = mapped_column(JSON, default=dict)            # telegram, phone
@@ -87,6 +89,19 @@ class Member(Base):
         if self.role not in granted:
             granted.insert(0, self.role)
         return [r for r in ROLE_ORDER if r in granted]
+
+    def all_direction_ids(self) -> list:
+        res = [int(x) for x in (self.direction_ids or []) if str(x).isdigit()]
+        if self.direction_id and self.direction_id not in res:
+            res.insert(0, self.direction_id)
+        return res
+
+    def all_team_ids(self) -> list:
+        res = [int(x) for x in (self.team_ids or []) if str(x).isdigit()]
+        if self.team_id and self.team_id not in res:
+            res.insert(0, self.team_id)
+        return res
+
 
 
 class Visit(Base):

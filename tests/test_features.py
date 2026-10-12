@@ -396,6 +396,13 @@ class SupportSectionTest(unittest.TestCase):
             t = s.get(M.SupportTicket, tid)
             self.assertEqual(t.status, "resolved")
 
+        # 5. Удаление обращения сотрудником/админом
+        del_res = c.post(f"/support/{tid}/delete", follow_redirects=True)
+        self.assertEqual(del_res.status_code, 200)
+        with M.Session() as s:
+            self.assertIsNone(s.get(M.SupportTicket, tid))
+
+
 
 if __name__ == "__main__":
     unittest.main()

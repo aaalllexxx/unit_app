@@ -23,7 +23,7 @@
     <span class="person-main">
       <b>{{ m.name }}</b>
       <span class="person-mail">{{ m.position or 'Сотрудник' }}{% if m.grade %} · {{ m.grade }}{% endif %}</span>
-      <span class="person-tags">{% if d %}<span class="tag tag-service">{{ d.title }}</span>{% endif %}{% if teams.get(m.team_id) %}<span class="tag">{{ teams[m.team_id].title }}</span>{% endif %}{% for s in (m.skills or [])[:3] %}<span class="tag">{{ s.name }}</span>{% endfor %}</span>
+      <span class="person-tags">{% for d_id in m.all_direction_ids() %}{% if dirs.get(d_id) %}<span class="tag tag-service">{{ dirs[d_id].title }}</span>{% endif %}{% endfor %}{% for t_id in m.all_team_ids() %}{% if teams.get(t_id) %}<span class="tag">{{ teams[t_id].title }}</span>{% endif %}{% endfor %}{% for s in (m.skills or [])[:3] %}<span class="tag">{{ s.name }}</span>{% endfor %}</span>
     </span>
     <span class="person-side" title="Дней с заходами из 30">{% if m.last_seen and (today - m.last_seen.date()).days < 1 %}<span class="live-dot" style="color: var(--ok)"></span>{% endif %}{{ acts[m.id].days30 }}/30<span class="chev">{{ icon('arrow', 16) }}</span></span>
   </a>

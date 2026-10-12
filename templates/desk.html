@@ -1,48 +1,45 @@
 {% extends 'base.html' %}
-{% from '_icons.html' import icon, kind_icon %}
-{% block title %}Рабочий стол — Лаборатория UNIT{% endblock %}
-{% block apptitle %}Рабочий стол{% endblock %}
+{% from '_icons.html' import icon %}
+{% block title %}Мастерская — Лаборатория UNIT{% endblock %}
 
-{% block content %}
-<div class="desk-page" data-desk>
-  <header class="desk-bar">
-    <div class="desk-bar-title">
-      {{ icon('desk', 18) }}
-      <span>Мастерская</span>
+{% block body %}
+<div class="wd" data-wd>
+  <header class="wd-bar">
+    <a class="wd-icon-btn" href="/home" title="К порталу" aria-label="К порталу">{{ icon('back', 17) }}</a>
+    <div class="wd-head">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <span class="wd-logo-ic">{{ icon('desk', 16) }}</span>
+        <input class="wd-title" data-wd-title value="Мастерская" maxlength="120" aria-label="Название мастерской">
+      </div>
+      <div class="wd-meta">
+        <select class="wd-project-sel" data-wd-project aria-label="Фильтр по проекту">
+          <option value="">Все проекты</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}">{{ p.title }}</option>
+          {% endfor %}
+        </select>
+        <span class="wd-tag">Хранилище: {{ (used / 1048576)|round(1) }} / {{ (quota / 1048576)|int }} МБ</span>
+      </div>
     </div>
-    <div class="desk-bar-sep"></div>
-    <select class="select input-sm" data-desk-project aria-label="Фильтр по проекту" style="width: auto; max-width: 220px; font-size: 12.5px">
-      <option value="">Все проекты</option>
-      {% for p in projects %}
-      <option value="{{ p.id }}">{{ p.title }}</option>
-      {% endfor %}
-    </select>
-    <div class="desk-bar-meta hide-sm">
-      <span class="faint">Файлы: {{ (used / 1048576)|round(1) }} из {{ (quota / 1048576)|int }} МБ</span>
-    </div>
-    <div class="desk-bar-grow"></div>
-    <span class="desk-save-state" data-desk-save>Сохранено</span>
-    <div class="desk-bar-sep"></div>
-    <button class="wt-btn" type="button" data-desk-tile title="Расположить открытые окна плиткой">{{ icon('grid', 14) }}<span class="hide-sm">Плитка</span></button>
-    <button class="wt-btn" type="button" data-desk-cascade title="Расположить открытые окна каскадом">{{ icon('layers', 14) }}<span class="hide-sm">Каскад</span></button>
-    <button class="wt-btn" type="button" data-desk-min-all title="Свернуть все окна">{{ icon('down', 14) }}<span class="hide-sm">Свернуть</span></button>
-    <button class="wt-btn" type="button" data-desk-clean title="Закрыть все окна на столе">{{ icon('x', 14) }}<span class="hide-sm">Очистить</span></button>
+    <span class="wd-save" data-wd-save>Сохранено</span>
+    <button class="wd-btn" type="button" data-wd-tile title="Расположить окна плиткой">{{ icon('grid', 14) }}<span class="hide-sm">Плитка</span></button>
+    <button class="wd-btn" type="button" data-wd-cascade title="Расположить окна каскадом">{{ icon('layers', 14) }}<span class="hide-sm">Каскад</span></button>
+    <button class="wd-btn" type="button" data-wd-min-all title="Свернуть все окна">{{ icon('down', 14) }}<span class="hide-sm">Свернуть</span></button>
+    <button class="wd-btn" type="button" data-wd-clean title="Очистить стол">{{ icon('x', 14) }}<span class="hide-sm">Очистить</span></button>
+    <button class="wd-btn is-accent" type="button" data-wd-fs title="Во весь экран">{{ icon('expand', 14) }}<span>Во весь экран</span></button>
   </header>
 
-  <main class="desk-canvas" data-desk-canvas>
-    <div class="desk-canvas-grid"></div>
-    <div class="desk-hint" data-desk-hint>
-      <span class="ai-mark" style="width: 48px; height: 48px; border-radius: 14px">{{ icon('desk', 22) }}</span>
-      <b>Рабочий стол пуст</b>
-      <span>Выберите инструмент в панели снизу или откройте сохранённую наработку</span>
+  <main class="wd-desk" data-wd-desk>
+    <div class="wd-hint" data-wd-hint>
+      <span class="ai-mark" style="width: 52px; height: 52px; border-radius: 16px; margin: 0 auto; color: var(--cyan); background: rgba(34, 227, 255, .1)">{{ icon('desk', 26) }}</span>
+      <b>Мастерская готова к работе</b>
+      <span>Нажми на инструмент в панели снизу или открой каталог всех инструментов</span>
     </div>
-    <div class="desk-snap" data-desk-snap hidden></div>
+    <div class="wd-snap" data-wd-snap hidden></div>
   </main>
 
-  <nav class="desk-dock" data-desk-dock aria-label="Инструменты мастерской">
-    <div class="desk-dock-row" data-desk-dock-row></div>
-  </nav>
-
+  <nav class="wd-dock" data-wd-dock aria-label="Инструменты мастерской"></nav>
+  <div class="wd-launch" data-wd-launch hidden></div>
   <input type="file" id="desk-file-input" hidden multiple>
 </div>
 
@@ -56,6 +53,10 @@
   'colors': colors,
   'ai_on': ai_on
 } | tojson }}</script>
+{% endblock %}
 
+{% block footer %}{% endblock %}
+
+{% block scripts %}
 <script src="/static/desk.js" defer></script>
 {% endblock %}

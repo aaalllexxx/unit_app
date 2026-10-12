@@ -268,15 +268,33 @@ def stream(s, messages: List[dict], *, max_tokens: int = 2400) -> Iterator[dict]
             if chunk.get("usage"):
                 tokens = int(chunk["usage"].get("total_tokens") or 0)
             for choice in chunk.get("choices") or []:
-                piece = (choice.get("delta") or {}).get("content")
+                delta = choice.get("delta") or {}
+                piece = delta.get("content")
+                if not piece and choice.get("message"):
+                    piece = choice["message"].get("content")
+                if not piece and choice.get("text"):
+                    piece = choice["text"]
                 if isinstance(piece, list):
                     piece = "".join(p.get("text", "") for p in piece if isinstance(p, dict))
                 if isinstance(piece, str) and piece:
                     got = True
                     yield {"delta": piece}
+                reasoning = delta.get("reasoning_content") or delta.get("reasoning") or delta.get("thought")
+                if isinstance(reasoning, str) and reasoning:
+                    got = True
+                    yield {"reasoning": reasoning}
     finally:
         response.close()
     if not got:
+        # Fallback to non-streaming ask() if stream returned no content
+        try:
+            full_text, t = ask(s, messages, max_tokens=max_tokens)
+            if full_text:
+                yield {"delta": full_text}
+                yield {"done": True, "tokens": t}
+                return
+        except Exception:
+            pass
         raise AiError("Модель вернула пустой ответ — проверьте модель в настройках")
     yield {"done": True, "tokens": tokens}
 

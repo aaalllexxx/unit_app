@@ -37,6 +37,11 @@
       {% endif %}
     </form>
     {% endif %}
+    {% if is_staff %}
+    <form method="post" action="/support/{{ ticket.id }}/delete" onsubmit="return confirm('Удалить обращение безвозвратно?')">
+      <button class="btn btn-danger btn-sm" type="submit" title="Удалить обращение">{{ icon('trash', 14) }}Удалить</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 

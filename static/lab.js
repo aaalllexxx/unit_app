@@ -171,11 +171,59 @@
             }
         });
     }
+    var TOOL_NAMES = {
+        task: 'Создание задачи',
+        task_edit: 'Изменение задачи',
+        update_task: 'Изменение задачи',
+        move: 'Перемещение задачи',
+        part: 'Часть проекта',
+        journal: 'Запись в журнал',
+        note: 'Заметка на стол',
+        checklist: 'Чек-лист на стол',
+        checklist_item: 'Пункт чек-листа',
+        comment: 'Комментарий к задаче',
+        code: 'Код на стол',
+        link: 'Ссылка на стол'
+    };
     Chat.prototype.setControls = function (generating) {
         var sendBtn = $('.ci-send', this.form);
         var stopBtn = $('.ci-stop', this.form) || $('[data-chat-stop]', this.form);
-        if (sendBtn) sendBtn.hidden = generating;
         if (stopBtn) stopBtn.hidden = !generating;
+        if (sendBtn) {
+            sendBtn.hidden = false;
+            if (generating) {
+                sendBtn.classList.add('is-queued-mode');
+                sendBtn.title = 'Докинуть задание в процесс';
+                sendBtn.setAttribute('aria-label', 'Докинуть задание в процесс');
+            } else {
+                sendBtn.classList.remove('is-queued-mode');
+                sendBtn.title = 'Отправить';
+                sendBtn.setAttribute('aria-label', 'Отправить');
+            }
+        }
+    };
+    Chat.prototype.updateQueueBadge = function () {
+        var bar = $('.chat-queue-chip', this.box);
+        var count = (this.queue || []).length;
+        if (count > 0) {
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.className = 'chat-queue-chip';
+                this.form.parentNode.insertBefore(bar, this.form);
+            }
+            bar.innerHTML = icon('spark', 13) + '<span>В очереди к текущей задаче: <b>' + count + '</b></span>';
+            bar.hidden = false;
+        } else if (bar) {
+            bar.remove();
+        }
+    };
+    Chat.prototype.renderQueued = function (text) {
+        if (this.empty) this.empty.hidden = true;
+        var el = document.createElement('div');
+        el.className = 'msg user is-queued';
+        el.innerHTML = '<div><div class="bubble"><span class="chip-queue">В очереди</span>' + esc(text) + '</div></div>';
+        this.log.appendChild(el);
+        return el;
     };
     Chat.prototype.stop = function () {
         if (this.abortController) {
@@ -183,6 +231,8 @@
             this.abortController = null;
         }
         this.busy = false;
+        this.queue = [];
+        this.updateQueueBadge();
         this.setControls(false);
     };
     Chat.prototype.load = function () {
@@ -213,8 +263,13 @@
                     + '</div>';
             }).join('');
             var many = (m.actions || []).filter(function (a) { return !a.applied; }).length > 1;
+            var cleanText = (m.text || '')
+                .replace(/```(?:actions|json|tool_calls|tools)?\s*\[\s*\{[\s\S]*?\]\s*```/gi, '')
+                .replace(/```actions[\s\S]*?```/gi, '')
+                .replace(/\[\s*\{\s*"type"[\s\S]*$/gi, '')
+                .trim();
             el.innerHTML = '<span class="ai-mark" style="width: 26px; height: 26px; border-radius: 8px">' + icon('spark', 14) + '</span>'
-                + '<div class="bubble"><div class="md">' + md(m.text) + '</div>'
+                + '<div class="bubble"><div class="md">' + md(cleanText) + '</div>'
                 + (acts ? '<div class="ai-acts"><div class="ai-acts-head"><span>' + icon('spark', 13) + 'Инструменты агента</span>'
                     + (many ? '<button class="btn btn-ghost btn-xs" type="button" data-apply="all" data-msg="' + m.id + '">Применить всё</button>' : '') + '</div>' + acts + '</div>' : '')
                 + '<div class="msg-meta-row">'
@@ -230,8 +285,16 @@
         text = (text || '').trim();
         if (!text) return;
         if (this.busy) {
-            // Перебить агента: останавливаем предыдущий запрос и сразу шлём новый
-            this.stop();
+            // Докинуть задание в процессе выполнения основной задачи
+            this.queue = this.queue || [];
+            this.queue.push(text);
+            this.renderQueued(text);
+            this.area.value = '';
+            if (U.autosize) U.autosize(this.area);
+            this.scroll();
+            this.updateQueueBadge();
+            U.haptic('tap');
+            return;
         }
         this.busy = true;
         this.setControls(true);
@@ -281,12 +344,15 @@
                                 // Прячем любой хвост действий из markdown
                                 var cleanText = acc.replace(/```(?:actions|json|tool_calls|tools)?[\s\S]*$/, '')
                                                    .replace(/\[\s*\{\s*"type"[\s\S]*$/, '');
-                                var hasTools = /```(?:actions|json|tool_calls|tools)|\[\s*\{\s*"type"/i.test(acc);
-                                var rendered = md(cleanText.trim());
-                                if (hasTools) {
-                                    rendered += '<div class="ai-live-tool"><span class="live-dot"></span><span>Подготавливает действия…</span></div>';
+                                var toolMatch = acc.match(/\{\s*"type"\s*:\s*"([a-zA-Z_]+)"(?:[^{}]*?"title"\s*:\s*"([^"]+)")?/);
+                                var toolBar = '';
+                                if (toolMatch) {
+                                    var tLabel = TOOL_NAMES[toolMatch[1]] || toolMatch[1];
+                                    toolBar = '<div class="ai-live-tool"><span class="live-dot"></span><span>Используется инструмент: <b>' + esc(tLabel) + '</b>' + (toolMatch[2] ? ' «' + esc(toolMatch[2]) + '»' : '') + '</span></div>';
+                                } else if (/```(?:actions|json|tool_calls|tools)|\[\s*\{\s*"type"/i.test(acc)) {
+                                    toolBar = '<div class="ai-live-tool"><span class="live-dot"></span><span>Подготовка инструментов…</span></div>';
                                 }
-                                $('.md', bubble).innerHTML = rendered;
+                                $('.md', bubble).innerHTML = md(cleanText.trim()) + toolBar;
                                 self.scroll();
                             }
                             if (event.error) throw new Error(event.error);
@@ -314,6 +380,13 @@
                 bubble.classList.remove('typing');
                 self.busy = false;
                 self.setControls(false);
+                if (self.queue && self.queue.length > 0) {
+                    var nextTask = self.queue.shift();
+                    self.updateQueueBadge();
+                    setTimeout(function () {
+                        self.send(nextTask);
+                    }, 200);
+                }
             });
     };
     Chat.prototype.apply = function (button) {
