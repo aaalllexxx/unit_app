@@ -216,3 +216,4 @@ def support_status(ticket_id: int):
         flash(f"Статус изменён на «{M.SUPPORT_STATUSES[new_status]}».", "ok")
 
     return redirect(url_for("support_ticket", ticket_id=ticket.id))
+
