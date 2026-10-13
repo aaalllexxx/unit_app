@@ -100,6 +100,23 @@
     var MIN_W = 280, MIN_H = 190;
     var isPhone = function () { return window.matchMedia('(max-width: 760px)').matches; };
 
+    // Телефон: стол ровно между верхом страницы и нижней навигацией — меряем их на месте
+    function fitPhone() {
+        if (root.classList.contains('is-full') || !window.matchMedia('(max-width: 900px)').matches) {
+            root.style.removeProperty('--wd-h');
+            return;
+        }
+        var nav = document.querySelector('.side');
+        var navTop = nav && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : window.innerHeight;
+        var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        var top = root.getBoundingClientRect().top + window.scrollY;
+        var h = Math.floor(Math.min(navTop, vh) - top - 10);
+        if (h > 0) root.style.setProperty('--wd-h', h + 'px');
+    }
+    window.addEventListener('resize', fitPhone);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', fitPhone);
+    setTimeout(fitPhone, 0);
+
     function place(win) {
         var el = win.el;
         el.style.left = (win.x * 100) + '%';
@@ -1467,6 +1484,7 @@
         $('[data-wd-fs-ic]', fsBtn).innerHTML = icon(on ? 'shrink' : 'expand', 14);
         $('[data-wd-fs-label]', fsBtn).textContent = on ? 'Обычный вид' : 'Во весь экран';
         wins.forEach(function (w) { if (w.inst && w.inst.resize) w.inst.resize(); });
+        fitPhone();
     }
     fsBtn.addEventListener('click', function () {
         var on = !root.classList.contains('is-full');

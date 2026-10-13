@@ -1986,8 +1986,9 @@ body:has(.wd.is-full) { overflow: hidden; }
 
 /* Телефон: окна — одно за другим во весь стол, двигать нечем */
 @media (max-width: 900px) {
-  .view:has(> .wd) { padding: 10px 10px calc(78px + env(safe-area-inset-bottom)); }
-  .wd { height: calc(100dvh - 58px - env(safe-area-inset-top) - 88px - env(safe-area-inset-bottom)); min-height: 420px; }
+  .view:has(> .wd) { padding: 10px 10px 0; }
+  /* --wd-h считает desk.js по настоящим верхней панели и нижней навигации (на Android они выше расчётных) */
+  .wd { height: var(--wd-h, calc(100dvh - 58px - env(safe-area-inset-top) - 88px - env(safe-area-inset-bottom))); min-height: 320px; }
   .wd-bar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
   .wd-head { flex-basis: 100%; }
   .wd-tag { display: none; }
