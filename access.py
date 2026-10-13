@@ -70,6 +70,7 @@ CATALOG = [
     ("Администрирование", [
         ("admin.access", "Менять теги, права и лимиты", ""),
         ("admin.overview", "Обзор лаборатории", "Состояние всех проектов и загрузка людей"),
+        ("leads.notify", "Получать заявки на почту", "Дублирование новых заявок с лендинга на личную почту"),
     ]),
 ]
 ALL = [key for _, items in CATALOG for key, _, _ in items]
@@ -96,7 +97,7 @@ DEFAULT_RULES = [
 ]
 # Новые права появляются в уже настроенных правилах сами — один раз, у тех, у кого
 # есть «право-якорь» (руководителю — всё новое, что касается управления)
-GRANTS = {"journal.moderate": "admin.access", "ai.auto": "admin.access"}
+GRANTS = {"journal.moderate": "admin.access", "ai.auto": "admin.access", "leads.notify": "admin.access"}
 LEGACY_ROLE_TAGS = {"head": "руководитель лаборатории", "lead": "лид команды", "member": "сотрудник",
                     "customer": "заказчик"}
 

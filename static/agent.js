@@ -336,7 +336,7 @@
       if (run && run.now) skew = run.now - Date.now() / 1000;
       runStarted = (running && run.started) || 0;
       stopBtn.hidden = !running;
-      sendBtn.hidden = running && !input.value.trim();
+      sendBtn.hidden = running;
       form.classList.toggle('is-running', running);
       if (boot.ready) input.placeholder = running ? 'Уточните или поправьте — агент прочтёт по ходу работы…' : 'Напишите задачу агенту…';
       const texts = { thinking: 'Думаю…', tools: 'Работаю', awaiting: 'Жду вашего решения', stopping: 'Останавливаюсь…' };
@@ -400,7 +400,7 @@
       const auto = mode === 'auto';
       modeBtn.classList.toggle('is-auto', auto);
       modeBtn.setAttribute('aria-pressed', String(auto));
-      $('[data-mode-icon]').innerHTML = ic(auto ? 'play' : 'shield', 14);
+      $('[data-mode-icon]').innerHTML = ic(auto ? 'flash' : 'shield', 14);
       $('[data-mode-label]').textContent = auto ? 'Авто' : 'Ручной';
       modeBtn.title = !boot.auto ? 'Ручной: всё, что меняет данные, ждёт вашего «Разрешить». Режим «Авто» включается правом «Агент без подтверждений».'
         : auto ? 'Авто: агент меняет задачи, проекты и мастерскую без подтверждений. Нажмите — вернуть ручной режим.'
@@ -494,7 +494,6 @@
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 220) + 'px';
       form.classList.toggle('has-text', !!input.value.trim() || files.length > 0);
-      if (running) sendBtn.hidden = !input.value.trim();
     };
     input.addEventListener('input', autosize);
     input.addEventListener('keydown', (e) => {

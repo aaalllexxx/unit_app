@@ -20,14 +20,16 @@ import os
 import secrets
 import smtplib
 import threading
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
 
-from flask import Flask, Response, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import func, select
+from sqlalchemy.orm.attributes import flag_modified
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import access
@@ -95,15 +97,35 @@ def me():
 
 @app.before_request
 def guard():
+    host = (request.host or "").split(":")[0].lower()
+    # Доменная маршрутизация: labunit.ru — только лендинг, при входе — на app.labunit.ru
+    if host in ("labunit.ru", "www.labunit.ru"):
+        if request.path not in ("/", "/lead", "/healthz") and not request.path.startswith(("/static/", "/api/service/")):
+            target = f"https://app.labunit.ru{request.full_path if request.query_string else request.path}"
+            return redirect(target, code=302)
+
     # CSRF: меняющий запрос — только со своего сайта (Sec-Fetch-Site / Origin)
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-        site = request.headers.get("Sec-Fetch-Site")
-        origin = request.headers.get("Origin") or ""
-        if (site and site not in ("same-origin", "none")) or (not site and origin and
-                                                              urllib.parse.urlsplit(origin).netloc != request.host):
-            abort(403)
+        if not request.path.startswith("/api/service/"):
+            site = request.headers.get("Sec-Fetch-Site")
+            origin = request.headers.get("Origin") or ""
+            if (site and site not in ("same-origin", "none")) or (not site and origin and
+                                                                  urllib.parse.urlsplit(origin).netloc != request.host):
+                abort(403)
     person = me()
     if person:
+        # Быстрая проверка изменений тегов/прав из UNIT ID при обновлении страницы (раз в 3 секунды)
+        now_ts = time.time()
+        last_sync = session.get("_last_unitid_sync", 0)
+        if now_ts - last_sync > 3.0:
+            session["_last_unitid_sync"] = now_ts
+            try:
+                import unitid
+                if unitid.sync_member(person.id):
+                    person = me()
+            except Exception:
+                pass
+
         now = datetime.now()
         if not person.last_seen or now - person.last_seen > timedelta(minutes=5):
             person.last_seen = now
@@ -357,17 +379,197 @@ def logout():
     return redirect(f"{ISSUER}/logout?" + urllib.parse.urlencode({"next": SITE + "/"}))
 
 
-# ─── Лендинг ────────────────────────────────────────────────────────────────
+# ─── Лендинг и синхронизация ────────────────────────────────────────────────
 @app.route("/")
 def landing():
+    host = (request.host or "").split(":")[0].lower()
+    if host.startswith("app."):
+        if g.get("me"):
+            return redirect("/home")
+        return redirect("/login")
+
     rows = db().scalars(select(M.Project).where(M.Project.public.is_(True)).order_by(M.Project.status, M.Project.priority)).all()
     showcase = []
     for p in rows:
         parts = db().scalars(select(M.Part).where(M.Part.project_id == p.id)).all()
         showcase.append({"p": p, "percent": project_percent(parts), "direction": db().get(M.Direction, p.direction_id) if p.direction_id else None})
     directions = db().scalars(select(M.Direction).order_by(M.Direction.id)).all()
+    teams_rows = db().scalars(select(M.Team)).all()
+    all_members = db().scalars(select(M.Member)).all()
+    teams = []
+    for t in teams_rows:
+        m_list = [m for m in all_members if m.team_id == t.id or t.id in (m.team_ids or [])]
+        direction = db().get(M.Direction, t.direction_id) if t.direction_id else None
+        teams.append({
+            "id": t.id,
+            "title": t.title,
+            "direction": direction,
+            "count": len(m_list),
+            "members": [m.name for m in m_list]
+        })
     people = len(staff_members())
-    return render_template("landing.html", showcase=showcase, directions=directions, people=people)
+    lead_status = request.args.get("lead")
+    return render_template("landing.html", showcase=showcase, teams=teams, directions=directions, statuses=M.STATUSES, people=people, lead_status=lead_status)
+
+
+def notify_leads_by_email(lead_data: dict) -> None:
+    """Дублирование новой заявки на почту тем, у кого есть право leads.notify и указана почта."""
+    if not SMTP_HOST:
+        return
+    with M.Session() as s:
+        recipients = access.people_with(s, "leads.notify")
+        emails = [m.email.strip() for m in recipients if m.email and m.email.strip()]
+    if not emails:
+        return
+
+    name = lead_data.get("name") or "Без имени"
+    contact = lead_data.get("contact") or "Не указан"
+    created_at = lead_data.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M")
+    about = lead_data.get("about") or "—"
+    subject = f"Новая заявка с лендинга UNIT: {name}"
+    body = (
+        f"Здравствуйте!\n\n"
+        f"На лендинге лаборатории UNIT оставлена новая заявка:\n\n"
+        f"Имя: {name}\n"
+        f"Контакт: {contact}\n"
+        f"Время: {created_at}\n\n"
+        f"О себе / проект:\n{about}\n\n"
+        f"Посмотреть и обработать заявку в портале:\nhttps://app.labunit.ru/leads\n"
+    )
+
+    def send():
+        for email in set(emails):
+            try:
+                msg = EmailMessage()
+                msg["From"] = MAIL_FROM
+                msg["To"] = email
+                msg["Subject"] = subject
+                msg.set_content(body)
+                with smtplib.SMTP(SMTP_HOST, 25, timeout=20) as smtp:
+                    smtp.send_message(msg)
+            except Exception as err:
+                print(f"[lead-mail] Ошибка отправки на {email}: {err}", flush=True)
+
+    threading.Thread(target=send, daemon=True).start()
+
+
+@app.post("/lead")
+def lead_submit():
+    """Заявка с лендинга лаборатории: рассказать о себе."""
+    data = request.form or (request.get_json(silent=True) or {})
+    about = (data.get("about") or "").strip()[:2000]
+    contact = (data.get("contact") or "").strip()[:200]
+    name = (data.get("name") or "").strip()[:120]
+    if not about and not contact:
+        if request.headers.get("Accept") == "application/json" or request.is_json:
+            return jsonify({"error": "Заполните контакты или рассказ о себе"}), 400
+        return redirect("/?lead=error#contact")
+
+    lead_id = f"lead_{int(time.time())}_{secrets.token_hex(4)}"
+    lead_data = {
+        "id": lead_id,
+        "name": name,
+        "contact": contact,
+        "about": about,
+        "status": "new",
+        "created_at": datetime.now().isoformat(),
+        "ip": request.remote_addr or ""
+    }
+    with M.Session() as s:
+        leads_row = s.get(M.Setting, "leads_archive")
+        leads = json.loads(leads_row.value) if leads_row and leads_row.value else []
+        is_duplicate = False
+        if leads:
+            first = leads[0]
+            if first.get("name") == name and first.get("contact") == contact and first.get("about") == about:
+                is_duplicate = True
+        if not is_duplicate:
+            leads.insert(0, lead_data)
+            if len(leads) > 200:
+                leads = leads[:200]
+            if not leads_row:
+                s.add(M.Setting(key="leads_archive", value=json.dumps(leads, ensure_ascii=False)))
+            else:
+                leads_row.value = json.dumps(leads, ensure_ascii=False)
+            s.commit()
+            notify_leads_by_email(lead_data)
+
+    if request.headers.get("Accept") == "application/json" or request.is_json:
+        return jsonify({"ok": True, "message": "Заявка отправлена. Скоро свяжемся!"})
+    return redirect("/?lead=success#contact")
+
+
+@app.route("/leads")
+@need("admin.overview", "page.admin")
+def leads_page():
+    """Раздел управления заявками с лендинга."""
+    row = db().get(M.Setting, "leads_archive")
+    leads = json.loads(row.value) if row and row.value else []
+    status_filter = request.args.get("status", "")
+    filtered_leads = [l for l in leads if l.get("status", "new") == status_filter] if status_filter else leads
+    new_count = sum(1 for l in leads if l.get("status", "new") == "new")
+    in_progress_count = sum(1 for l in leads if l.get("status") == "in_progress")
+    replied_count = sum(1 for l in leads if l.get("status") == "replied")
+    archive_count = sum(1 for l in leads if l.get("status") == "archive")
+    return render_template("leads.html", leads=filtered_leads, all_leads=leads,
+                           new_count=new_count, in_progress_count=in_progress_count,
+                           replied_count=replied_count, archive_count=archive_count,
+                           status_filter=status_filter)
+
+
+@app.post("/api/lead/<lid>/status")
+@need("admin.overview", "page.admin")
+def lead_status_change(lid):
+    """Смена статуса заявки (новая, в работе, отвечено, архив)."""
+    new_status = (request.form.get("status") or (request.get_json(silent=True) or {}).get("status", "")).strip()
+    if new_status not in ("new", "in_progress", "replied", "archive"):
+        abort(400)
+    with M.Session() as s:
+        row = s.get(M.Setting, "leads_archive")
+        if row and row.value:
+            leads = json.loads(row.value)
+            for l in leads:
+                if l.get("id") == lid:
+                    l["status"] = new_status
+                    l["status_updated_at"] = datetime.now().isoformat()
+                    break
+            row.value = json.dumps(leads, ensure_ascii=False)
+            s.commit()
+    if request.headers.get("Accept") == "application/json" or request.is_json:
+        return jsonify({"ok": True, "status": new_status})
+    return redirect(request.referrer or "/leads")
+
+
+@app.post("/api/lead/<lid>/delete")
+@need("admin.overview", "page.admin")
+def lead_delete(lid):
+    """Удаление заявки из архива."""
+    with M.Session() as s:
+        row = s.get(M.Setting, "leads_archive")
+        if row and row.value:
+            leads = json.loads(row.value)
+            leads = [l for l in leads if l.get("id") != lid]
+            row.value = json.dumps(leads, ensure_ascii=False)
+            s.commit()
+    if request.headers.get("Accept") == "application/json" or request.is_json:
+        return jsonify({"ok": True})
+    return redirect(request.referrer or "/leads")
+
+
+@app.post("/api/service/unitid/sync")
+def api_service_unitid_sync():
+    """Мгновенное оповещение от UNIT ID об изменениях аккаунтов или правил."""
+    import unitid
+    data = request.get_json(silent=True) or {}
+    uid = data.get("user_id")
+    event = data.get("event")
+    if uid:
+        unitid.sync_member(uid)
+    else:
+        unitid.pull()
+    if event in ("access.updated", "rule.updated"):
+        unitid.sync_access(force=True)
+    return jsonify({"ok": True})
 
 
 # ─── «Сегодня»: главная сотрудника ──────────────────────────────────────────
@@ -482,7 +684,8 @@ def person(mid):
             if "github" in f:
                 contacts["github"] = f.get("github", "").strip().lstrip("@")[:80]
             if f.get("github_token"):
-                contacts["github_token"] = f.get("github_token", "").strip()[:150]
+                import git_hub
+                contacts["github_token"] = git_hub.encrypt_token(f.get("github_token", "").strip())
             if f.get("github_unlink") == "1":
                 contacts.pop("github", None)
                 contacts.pop("github_token", None)
@@ -501,6 +704,31 @@ def person(mid):
                 t_list = [int(f["team_id"])]
             member.team_ids = t_list
             member.team_id = t_list[0] if t_list else None
+
+            # Доступ «Получать заявки на почту» — обязательное требование: наличие email у сотрудника
+            ma = db().get(M.MemberAccess, member.id)
+            if f.get("leads_notify") == "1":
+                if not (member.email or "").strip():
+                    flash("Для включения доступа «Получать заявки на почту» укажите email сотрудника", "danger")
+                else:
+                    if not ma:
+                        ma = M.MemberAccess(member_id=member.id, allow=["leads.notify"], deny=[], limits={})
+                        db().add(ma)
+                    else:
+                        allow = list(set(ma.allow or []) | {"leads.notify"})
+                        deny = [x for x in (ma.deny or []) if x != "leads.notify"]
+                        ma.allow, ma.deny = allow, deny
+                        flag_modified(ma, "allow")
+                        flag_modified(ma, "deny")
+            else:
+                if ma and ("leads.notify" in (ma.allow or [])):
+                    allow = [x for x in (ma.allow or []) if x != "leads.notify"]
+                    ma.allow = allow
+                    flag_modified(ma, "allow")
+                if ma and ("leads.notify" not in (ma.deny or [])):
+                    deny = list(set(ma.deny or []) | {"leads.notify"})
+                    ma.deny = deny
+                    flag_modified(ma, "deny")
         db().commit()
         flash("Профиль сохранён", "ok")
         return redirect(url_for("person", mid=mid))
@@ -520,11 +748,13 @@ def person(mid):
     see_checkins = own or can("people.progress")
     checkins = db().scalars(select(M.Checkin).where(M.Checkin.member_id == mid).order_by(M.Checkin.day.desc())
                             .limit(5)).all() if see_checkins else []
+    has_leads_notify = "leads.notify" in access.resolve(db(), member)["perms"]
     return render_template("person.html", m=member, own=own, head=head, projects=projects, grid=grid,
                            act=activity(mid), open_tasks=open_tasks, done30=done30, hours=hours, checkins=checkins,
                            names={p.id: p.title for p, _ in projects},
                            dirs=db().scalars(select(M.Direction)).all(), teams=db().scalars(select(M.Team)).all(),
                            grades=M.GRADES, tag_rules=access.rules(db()),
+                           has_leads_notify=has_leads_notify,
                            open_edit=own and not member.position and not member.skills)
 
 
@@ -552,6 +782,44 @@ def direction(slug):
     staff = staff_members()
     return render_template("direction.html", d=d, teams=teams, members=members, projects=projects,
                            percents=percents, staff=staff, lead=db().get(M.Member, d.lead_id) if d.lead_id else None)
+
+
+@app.post("/api/team/<int:tid>/rename")
+@need("teams.manage")
+def team_rename(tid):
+    """Переименование группы."""
+    t = db().get(M.Team, tid)
+    if not t:
+        abort(404)
+    new_title = (request.form.get("title") or "").strip()[:120]
+    if new_title:
+        t.title = new_title
+        db().commit()
+    d = db().get(M.Direction, t.direction_id) if t.direction_id else None
+    return redirect(request.referrer or (f"/d/{d.slug}" if d else "/teams"))
+
+
+@app.post("/api/team/<int:tid>/delete")
+@need("teams.manage")
+def team_delete(tid):
+    """Удаление группы и отвязка её от всех сотрудников."""
+    t = db().get(M.Team, tid)
+    if not t:
+        abort(404)
+    d = db().get(M.Direction, t.direction_id) if t.direction_id else None
+    for m in db().scalars(select(M.Member)):
+        changed = False
+        if m.team_id == tid:
+            m.team_id = None
+            changed = True
+        if m.team_ids and tid in m.team_ids:
+            m.team_ids = [x for x in m.team_ids if x != tid]
+            changed = True
+        if changed:
+            flag_modified(m, "team_ids")
+    db().delete(t)
+    db().commit()
+    return redirect(request.referrer or (f"/d/{d.slug}" if d else "/teams"))
 
 
 @app.route("/teams", methods=["GET", "POST"])
@@ -597,7 +865,8 @@ def teams():
         projects_ = [p for p in visible_projects(g.me) if p.direction_id == d.id]
         info[d.id] = {"people": [m for m in members if d.id in m.all_direction_ids()], "projects": projects_,
                       "active": sum(1 for p in projects_ if p.status == "active"),
-                      "lead": db().get(M.Member, d.lead_id) if d.lead_id else None}
+                      "lead": db().get(M.Member, d.lead_id) if d.lead_id else None,
+                      "teams": db().scalars(select(M.Team).where(M.Team.direction_id == d.id)).all()}
     return render_template("teams.html", rows=rows, info=info, tones=TEAM_TONES, icons=TEAM_ICONS)
 
 
@@ -1024,7 +1293,7 @@ def task_comment(tid):
 
 
 @app.post("/api/task/<int:tid>/comment/<int:cid>/delete")
-@need("task.work", "journal.moderate")
+@need("task.work")
 def task_comment_delete(tid, cid):
     """Свой комментарий удаляет автор, чужой — тот, у кого право journal.moderate."""
     task = db().get(M.Task, tid)
@@ -1040,7 +1309,7 @@ def task_comment_delete(tid, cid):
 
 
 @app.post("/p/<int:pid>/update/<int:uid>/delete")
-@need("task.work", "journal.moderate")
+@need("task.work")
 def project_update_delete(pid, uid):
     """Запись журнала: свою удаляет автор, любую — модератор журналов (право journal.moderate)."""
     project_or_404(pid)
@@ -1419,12 +1688,22 @@ def common():
     staff = access.can(me_, "task.work")
     unread = db().scalar(select(func.count()).select_from(M.Notice).where(
         M.Notice.member_id == me_.id, M.Notice.read_at.is_(None))) if me_ else 0
+    new_leads_count = 0
+    if me_ and (access.can(me_, "admin.overview") or access.can(me_, "page.admin")):
+        row = db().get(M.Setting, "leads_archive")
+        if row and row.value:
+            try:
+                leads = json.loads(row.value)
+                new_leads_count = sum(1 for l in leads if l.get("status", "new") == "new")
+            except Exception:
+                pass
     return {"me": me_, "can": lambda key: access.can(me_, key), "statuses": M.STATUSES, "today": date.today(),
             "support_url": "/support",
             "view_titles": {v: access.view_title(db(), v) for v in (me_.views if me_ else [])},
             "issuer": ISSUER, "unread": unread, "now_hour": datetime.now().hour,
             "ai_on": access.can(me_, "ai.use") and ai.configured(db()),
             "running": db().get(M.Timer, me_.id) if staff else None,
+            "new_leads_count": new_leads_count,
             "haptics": (me_.prefs or {}).get("haptics", True) if me_ else True}
 
 

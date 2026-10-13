@@ -260,6 +260,7 @@ details > summary::-webkit-details-marker { display: none; }
 .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .t-crimson { --tone: var(--crimson); }
 .t-blue { --tone: var(--blue); }
+.t-indigo { --tone: var(--accent); }
 .t-violet { --tone: var(--violet); }
 .s-active { --tone: var(--ok); }
 .s-paused { --tone: var(--warn); }
@@ -356,9 +357,9 @@ details > summary::-webkit-details-marker { display: none; }
 /* ── Публичные страницы ─────────────────────────────────────────────────── */
 .wrap { width: 100%; max-width: 1180px; margin-inline: auto; padding-inline: 28px; }
 .site-top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
-.site-top .wrap { display: flex; align-items: center; gap: 28px; height: 68px; }
-.site-nav { display: flex; gap: 4px; }
-.site-nav a { padding: 7px 12px; border-radius: 8px; color: var(--ink-2); font-size: 14px; font-weight: 500; }
+.site-top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 68px; }
+.site-nav { display: flex; align-items: center; gap: 4px; }
+.site-nav a { padding: 6px 12px; border-radius: 8px; color: var(--ink-2); font-size: 14px; font-weight: 500; white-space: nowrap; transition: color .15s, background .15s; }
 .site-nav a:hover { color: var(--ink); background: var(--sunken); }
 .hero { padding: 96px 0 72px; position: relative; }
 .hero::before {
@@ -785,7 +786,48 @@ dialog.sheet.drawer.closing { animation: side-out .18s ease forwards; }
 /* Плотные формы: поля в ряд, а не столбиком */
 .fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
 .fgrid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fgrid.one { grid-template-columns: minmax(0, 1fr); }
 .fgrid .full { grid-column: 1 / -1; }
+
+.chip-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: all .15s ease;
+}
+.chip-check:hover {
+  background: var(--sunken);
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+.chip-check input[type="checkbox"] {
+  display: none;
+}
+.chip-check .chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  transition: all .15s ease;
+}
+.chip-check:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.chip-check:has(input:checked) .chip-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
 .fieldset { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
 .fieldset > .label-mono { margin-bottom: -2px; }
 .toggle-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
@@ -1307,7 +1349,7 @@ details[open] > summary > .ac-step-chev { transform: none; }
 .ac-grow { flex: 1; }
 .ac-send, .ac-stop { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer;
   color: #fff; background: var(--ink); transition: opacity .15s, transform .15s; }
-.ac-send .ic { transform: rotate(-90deg); }
+.ac-send .ic { transform: none; }
 .ac-composer:not(.has-text) .ac-send { opacity: .3; }
 .ac-send:disabled { opacity: .3; }
 .ac-send:active, .ac-stop:active { transform: scale(.94); }
@@ -1660,11 +1702,12 @@ button.choice { width: 100%; font: inherit; color: inherit; background: var(--su
 .rings.sm .ring { width: 96px; } .rings.sm .ring b { font-size: 15px; }
 
 /* Команды */
-.team-card { position: relative; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; transition: border-color .15s, box-shadow .15s, transform .15s; }
-.team-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow); transform: translateY(-1px); }
-.team-link { position: absolute; inset: 0; border-radius: inherit; z-index: 0; }
-.team-card > * { position: relative; z-index: 1; pointer-events: none; }
-.team-card .team-menu, .team-card .team-menu * { pointer-events: auto; }
+.team-card { position: relative; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.team-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow); transform: translateY(-2px); }
+.team-link { position: absolute; inset: 0; border-radius: inherit; z-index: 2; }
+.team-card > *:not(.team-link):not(.team-menu) { position: relative; z-index: 1; pointer-events: none; }
+.team-card .team-menu { position: relative; z-index: 3; pointer-events: auto; }
+.team-card .team-menu * { pointer-events: auto; }
 .team-card h3 { font-size: 17px; }
 .team-about { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .team-foot { display: flex; align-items: center; gap: 10px; margin-top: auto; }
@@ -2379,3 +2422,223 @@ section[id] { scroll-margin-top: 80px; }
 .token-box { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 12px; border: 1px solid var(--accent-line);
   background: var(--accent-soft); }
 .token-box code { flex: 1; min-width: 0; background: none; border: 0; padding: 0; font-size: 13px; color: var(--ink); word-break: break-all; }
+
+/* ── Обновлённый лендинг лаборатории UNIT ───────────────────────────────── */
+.landing-hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 48px;
+    align-items: center;
+}
+.hero-badges {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 26px;
+}
+.hero-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 13px;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--surface) 75%, transparent);
+    border: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--ink-2);
+    font-weight: 500;
+}
+.hero-tag .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 6px var(--accent-2);
+}
+
+/* Карточки манифеста и принципов */
+.card-unit {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color .2s, transform .2s, box-shadow .2s;
+}
+.card-unit:hover {
+    border-color: var(--line-strong);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+}
+.card-unit .num {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-2);
+}
+.card-unit h3 {
+    font-size: 19px;
+    line-height: 1.25;
+}
+.card-unit p {
+    color: var(--ink-2);
+    font-size: 14.5px;
+    line-height: 1.55;
+}
+
+/* Процесс в 4 шага */
+.pipeline-step {
+    position: relative;
+    padding: 26px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color .2s, transform .2s;
+}
+.pipeline-step:hover {
+    border-color: var(--accent-2);
+    transform: translateY(-2px);
+}
+.step-idx {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--accent) 55%, var(--ink-3));
+    line-height: 1;
+}
+
+/* Блок Про Деньги */
+.money-card {
+    background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 95%, #059669 5%), var(--surface));
+    border: 1px solid color-mix(in srgb, var(--line) 75%, #10b981 25%);
+    border-radius: 22px;
+    padding: 42px 48px;
+    position: relative;
+    overflow: hidden;
+}
+.money-card::before {
+    content: ''; position: absolute; right: -80px; top: -80px; width: 280px; height: 280px;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.12), transparent 70%);
+    pointer-events: none;
+}
+.money-headline {
+    font-size: clamp(22px, 2.4vw, 30px);
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 16px;
+}
+.money-body {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--ink-2);
+    max-width: 52em;
+}
+.money-foot {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 15.5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+}
+
+/* Блок «Рассказать о себе» (лендинг) */
+.contact-card {
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 22px;
+    padding: 42px 46px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
+}
+.contact-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 26px;
+    flex-wrap: wrap;
+}
+.contact-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 15px;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--accent-2) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent-2) 26%, transparent);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--accent-2);
+    white-space: nowrap;
+}
+.lead-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 18px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    font-size: 14.5px;
+    font-weight: 500;
+}
+.lead-alert.success {
+    background: color-mix(in srgb, var(--ok) 12%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent);
+    color: var(--ok);
+}
+.lead-alert.error {
+    background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    color: var(--danger);
+}
+
+/* Действия с группами (редактирование / удаление) */
+.team-action-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 99px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    font-size: 13.5px;
+    color: var(--ink);
+    transition: all .15s ease;
+}
+.team-action-chip:hover {
+    border-color: var(--line-strong);
+}
+.team-action-btn {
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: var(--ink-3);
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color .15s, transform .1s;
+}
+.team-action-btn:hover {
+    color: var(--ink);
+}
+.team-action-btn.del:hover {
+    color: var(--danger);
+}
+
+@media (max-width: 900px) {
+    .landing-hero-grid { grid-template-columns: minmax(0, 1fr); }
+    .contact-card { padding: 26px 20px; }
+    .money-card { padding: 28px 24px; }
+}
+
+

@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon, initials %}
+{% block title %}Заявки — Лаборатория UNIT{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <span class="eyebrow">Входящие контакты</span>
+    <h1>Заявки с лендинга</h1>
+    <p class="sub">Люди, которые заполнили форму «Рассказать о себе». Отвечаем лично в Telegram или на почту.</p>
+  </div>
+  <div class="actions">
+    {% if new_count > 0 %}
+    <span class="chip tone" style="--tone: var(--accent); font-weight: 600; padding: 6px 14px">
+      {{ icon('inbox', 16) }} Новых: {{ new_count }}
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Фильтры по статусам -->
+<div class="row-wrap" style="gap: 10px; margin-bottom: 24px">
+  <a class="chip-check {{ 'on' if not status_filter }}" href="/leads" style="{{ 'background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--ink); border-color: var(--accent)' if not status_filter }}">
+    <span>Все ({{ all_leads|length }})</span>
+  </a>
+  <a class="chip-check {{ 'on' if status_filter == 'new' }}" href="/leads?status=new" style="{{ 'background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--ink); border-color: var(--accent)' if status_filter == 'new' }}">
+    <span class="chip-dot" style="background: var(--accent)"></span>
+    <span>Новые ({{ new_count }})</span>
+  </a>
+  <a class="chip-check {{ 'on' if status_filter == 'in_progress' }}" href="/leads?status=in_progress" style="{{ 'background: color-mix(in srgb, var(--warn) 12%, var(--surface)); color: var(--ink); border-color: var(--warn)' if status_filter == 'in_progress' }}">
+    <span class="chip-dot" style="background: var(--warn)"></span>
+    <span>В работе ({{ in_progress_count }})</span>
+  </a>
+  <a class="chip-check {{ 'on' if status_filter == 'replied' }}" href="/leads?status=replied" style="{{ 'background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: var(--ink); border-color: var(--ok)' if status_filter == 'replied' }}">
+    <span class="chip-dot" style="background: var(--ok)"></span>
+    <span>Отвечено ({{ replied_count }})</span>
+  </a>
+  <a class="chip-check {{ 'on' if status_filter == 'archive' }}" href="/leads?status=archive" style="{{ 'background: var(--sunken); color: var(--ink-2); border-color: var(--line-strong)' if status_filter == 'archive' }}">
+    <span>Архив ({{ archive_count }})</span>
+  </a>
+</div>
+
+{% if leads %}
+<div class="stack" style="gap: 16px">
+  {% for lead in leads %}
+  {% set st = lead.get('status', 'new') %}
+  <div class="panel" style="padding: 22px 26px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface)">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span class="avatar" style="width: 42px; height: 42px; font-size: 15px; font-weight: 700; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent)">
+          {{ initials(lead.name or 'Заявка') }}
+        </span>
+        <div class="stack-xs" style="gap: 2px">
+          <div style="font-size: 17px; font-weight: 700; color: var(--ink)">
+            {{ lead.name or 'Без имени' }}
+          </div>
+          <div class="tiny faint">
+            {{ lead.created_at[:16].replace('T', ' ') if lead.created_at else '' }}
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+        <!-- Статус заявки -->
+        <form method="post" action="/api/lead/{{ lead.id }}/status" style="display: inline-flex; align-items: center; gap: 6px">
+          <select class="select select-sm" name="status" onchange="this.form.submit()" style="font-size: 13px; font-weight: 500; height: 32px">
+            <option value="new" {{ 'selected' if st == 'new' }}>Новая</option>
+            <option value="in_progress" {{ 'selected' if st == 'in_progress' }}>В работе</option>
+            <option value="replied" {{ 'selected' if st == 'replied' }}>Отвечено</option>
+            <option value="archive" {{ 'selected' if st == 'archive' }}>Архив</option>
+          </select>
+        </form>
+
+        <!-- Удаление -->
+        <form method="post" action="/api/lead/{{ lead.id }}/delete" onsubmit="return confirm('Удалить заявку от {{ lead.name or lead.contact }}?');">
+          <button class="btn btn-quiet btn-sm" type="submit" title="Удалить заявку" style="color: var(--ink-3)">
+            {{ icon('trash', 14) }}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Контакт для связи -->
+    <div style="margin-top: 14px; padding: 10px 14px; border-radius: 10px; background: var(--sunken); border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap">
+      <span class="label-mono" style="margin: 0; font-size: 11px">Контакт:</span>
+      {% set c = lead.contact or '' %}
+      {% if '@' in c and not c.startswith('@') and '.' in c %}
+      <a href="mailto:{{ c }}" class="small strong" style="display: inline-flex; align-items: center; gap: 6px; color: var(--accent)">
+        {{ icon('mail', 14) }} {{ c }}
+      </a>
+      {% else %}
+      {% set tg = c.replace('https://t.me/', '').replace('t.me/', '').lstrip('@').strip() %}
+      {% if tg %}
+      <a href="https://t.me/{{ tg }}" target="_blank" rel="noopener" class="small strong" style="display: inline-flex; align-items: center; gap: 6px; color: var(--accent)">
+        {{ icon('send', 14) }} @{{ tg }}
+      </a>
+      {% endif %}
+      <span class="small mono">{{ c }}</span>
+      {% endif %}
+    </div>
+
+    <!-- Текст о себе -->
+    {% if lead.about %}
+    <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line)">
+      <span class="label-mono" style="display: block; margin-bottom: 6px; font-size: 11px">О себе и проекте:</span>
+      <div style="font-size: 14.5px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word">
+        {{ lead.about }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel empty" style="padding: 48px 24px; text-align: center">
+  <div style="margin-bottom: 12px; color: var(--ink-3)">{{ icon('inbox', 36) }}</div>
+  <div style="font-size: 17px; font-weight: 600; color: var(--ink); margin-bottom: 6px">Заявок пока нет</div>
+  <p class="small muted">Новые заявки с лендинга лаборатории появятся здесь и будут дублироваться на почту тем, у кого включён доступ.</p>
+</div>
+{% endif %}
+{% endblock %}

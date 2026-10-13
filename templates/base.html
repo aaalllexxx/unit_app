@@ -48,6 +48,14 @@
       {% if can('admin.overview') or can('page.admin') or can('ai.settings') %}
       <span class="side-label label-mono">Управление</span>
       {% if can('admin.overview') %}{{ nav('/admin', 'chart', 'Обзор', 'Обзор', here == '/admin') }}{% endif %}
+      {% if can('admin.overview') or can('page.admin') %}
+      <a class="side-link {{ 'on' if here == '/leads' }}" href="/leads">
+        {{ icon('inbox', 18) }}
+        <span class="full">Заявки</span>
+        <span class="short">Заявки</span>
+        {% if new_leads_count %}<span class="count-badge" style="margin-left: auto; background: var(--accent); color: #fff; font-weight: 600">{{ new_leads_count }}</span>{% endif %}
+      </a>
+      {% endif %}
       {% if can('page.admin') %}{{ nav('/access', 'key', 'Доступы', 'Доступы', here.startswith('/access')) }}{% endif %}
       {% if can('ai.settings') %}{{ nav('/admin/ai', 'settings', 'ИИ лаборатории', 'ИИ', here == '/admin/ai') }}{% endif %}
       {% endif %}
@@ -107,6 +115,7 @@
       <a href="/notices">{{ icon('bell', 22) }}Уведомления{% if unread %} · {{ unread }}{% endif %}</a>
       {% if can('page.people') %}<a href="/people/{{ me.id }}">{{ icon('user', 22) }}Профиль</a>{% endif %}
       {% if can('admin.overview') %}<a href="/admin">{{ icon('chart', 22) }}Обзор</a>{% endif %}
+      {% if can('admin.overview') or can('page.admin') %}<a href="/leads">{{ icon('inbox', 22) }}Заявки{% if new_leads_count %} · {{ new_leads_count }}{% endif %}</a>{% endif %}
       {% if can('page.admin') %}<a href="/access">{{ icon('key', 22) }}Доступы</a>{% endif %}
       {% if can('ai.settings') %}<a href="/admin/ai">{{ icon('settings', 22) }}ИИ лаборатории</a>{% endif %}
       <a href="/settings">{{ icon('settings', 22) }}Настройки</a>

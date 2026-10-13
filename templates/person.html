@@ -121,25 +121,64 @@
           <label class="field"><span class="label">Грейд</span><select class="select" name="grade"><option value="">—</option>{% for g in grades %}<option {{ 'selected' if g == m.grade }}>{{ g }}</option>{% endfor %}</select></label>
           <div class="field">
             <span class="label">Команды (направления)</span>
-            <div class="row-wrap" style="gap: 8px; margin-top: 4px">
+            <div class="row-wrap" style="gap: 8px; margin-top: 6px">
               {% for d in dirs %}
-              <label class="check small"><input type="checkbox" name="direction_ids" value="{{ d.id }}" {{ 'checked' if d.id in m.all_direction_ids() }}>{{ d.title }}</label>
+              <label class="chip-check"><input type="checkbox" name="direction_ids" value="{{ d.id }}" {{ 'checked' if d.id in m.all_direction_ids() }}><span class="chip-dot"></span><span>{{ d.title }}</span></label>
               {% endfor %}
             </div>
           </div>
           {% if teams %}
           <div class="field">
             <span class="label">Группы</span>
-            <div class="row-wrap" style="gap: 8px; margin-top: 4px">
+            <div class="row-wrap" style="gap: 8px; margin-top: 6px">
               {% for t in teams %}
-              <label class="check small"><input type="checkbox" name="team_ids" value="{{ t.id }}" {{ 'checked' if t.id in m.all_team_ids() }}>{{ t.title }}</label>
+              <div style="display: inline-flex; align-items: center; gap: 4px">
+                <label class="chip-check"><input type="checkbox" name="team_ids" value="{{ t.id }}" {{ 'checked' if t.id in m.all_team_ids() }}><span class="chip-dot"></span><span>{{ t.title }}</span></label>
+                {% if can('teams.manage') %}
+                <button type="button" class="team-action-btn del" title="Удалить группу «{{ t.title }}»" onclick="deleteGroupFromPerson({{ t.id }}, {{ t.title|tojson }})">
+                  {{ icon('trash', 12) }}
+                </button>
+                {% endif %}
+              </div>
               {% endfor %}
             </div>
           </div>
           {% endif %}
+          <div class="field" style="margin-top: 6px">
+            <span class="label">Заявки с лендинга</span>
+            {% if m.email and m.email.strip() %}
+            <label class="toggle-row" style="padding: 6px 0">
+              <span class="grow">
+                <b>Получать заявки на почту</b>
+                <span class="tiny faint">Дублирование новых заявок на {{ m.email }}</span>
+              </span>
+              <span class="switch">
+                <input type="checkbox" name="leads_notify" value="1" {{ 'checked' if has_leads_notify }}>
+                <i></i>
+              </span>
+            </label>
+            {% else %}
+            <div style="padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); font-size: 13.5px">
+              <div style="font-weight: 600; color: var(--warn); margin-bottom: 2px">Для включения доступа укажите email</div>
+              <div class="tiny faint">Чтобы включить «Получать заявки на почту», у человека обязательно должна быть указана почта в профиле.</div>
+            </div>
+            {% endif %}
+          </div>
         </div>
         {% if can('page.admin') %}<a class="disclose" href="/access/person/{{ m.id }}" style="margin-top: 10px">{{ icon('key', 13) }}Теги, права и лимиты — в «Доступах»</a>{% endif %}
       </div>
+      {% if can('teams.manage') %}
+      <script>
+      function deleteGroupFromPerson(id, title) {
+        if (!confirm(`Удалить группу «${title}»? Она будет удалена у всех сотрудников.`)) return;
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = "/api/team/" + id + "/delete";
+        document.body.appendChild(form);
+        form.submit();
+      }
+      </script>
+      {% endif %}
     </section>
     {% endif %}
   </form>

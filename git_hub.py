@@ -8,7 +8,9 @@
 """
 
 import base64
+import hashlib
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -21,6 +23,55 @@ GITHUB_API = "https://api.github.com"
 USER_AGENT = "UNIT-Portal/1.0"
 
 
+def _get_fernet():
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        return None
+    secret = os.environ.get("LAB_SECRET", "")
+    if not secret:
+        path = os.path.join(M.DATA_DIR, ".secret")
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    secret = f.read().strip()
+            except Exception:
+                pass
+    if not secret:
+        secret = "default-unit-portal-secret-key"
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+    return Fernet(key)
+
+
+def encrypt_token(token: str) -> str:
+    t = clean_token(token)
+    if not t or t.startswith("enc:"):
+        return t
+    fernet = _get_fernet()
+    if not fernet:
+        return t
+    try:
+        return "enc:" + fernet.encrypt(t.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return t
+
+
+def decrypt_token(token: str) -> str:
+    t = str(token or "").strip()
+    if not t:
+        return ""
+    if not t.startswith("enc:"):
+        return clean_token(t)
+    fernet = _get_fernet()
+    if not fernet:
+        return t
+    raw = t[4:]
+    try:
+        return fernet.decrypt(raw.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return ""
+
+
 def clean_username(username: str) -> str:
     s = str(username or "").strip()
     s = re.sub(r"^https?://(?:www\.)?github\.com/", "", s, flags=re.IGNORECASE)
@@ -30,6 +81,8 @@ def clean_username(username: str) -> str:
 
 def clean_token(token: str) -> str:
     t = str(token or "").strip()
+    if t.startswith("enc:"):
+        return t
     if t.lower().startswith("bearer "):
         t = t[7:].strip()
     elif t.lower().startswith("token "):
@@ -61,8 +114,9 @@ def _github_request(url: str, token: str = "") -> Any:
     req = urllib.request.Request(url)
     req.add_header("User-Agent", USER_AGENT)
     req.add_header("Accept", "application/vnd.github.v3+json")
-    if token:
-        req.add_header("Authorization", f"Bearer {token}")
+    dec = decrypt_token(token)
+    if dec:
+        req.add_header("Authorization", f"Bearer {dec}")
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
             data = resp.read().decode("utf-8", errors="replace")
@@ -100,7 +154,7 @@ def link_account(s, member_id: str, username: str, token: str = "") -> bool:
     contacts = dict(member.contacts or {})
     contacts["github"] = u
     if t:
-        contacts["github_token"] = t
+        contacts["github_token"] = encrypt_token(t)
     elif "github_token" in contacts and not token:
         pass
     member.contacts = contacts
@@ -125,9 +179,10 @@ def unlink_account(s, member_id: str) -> bool:
 def list_repos(username: str, token: str = "") -> Tuple[List[Dict[str, Any]], Optional[str]]:
     u = clean_username(username)
     t = clean_token(token)
-    if not u and not t:
+    dec = decrypt_token(t)
+    if not u and not dec:
         return [], "GitHub аккаунт не указан"
-    url = f"{GITHUB_API}/user/repos?sort=updated&per_page=30" if t else f"{GITHUB_API}/users/{u}/repos?sort=updated&per_page=30"
+    url = f"{GITHUB_API}/user/repos?sort=updated&per_page=30" if dec else f"{GITHUB_API}/users/{u}/repos?sort=updated&per_page=30"
     try:
         raw = _github_request(url, t)
         if not isinstance(raw, list):

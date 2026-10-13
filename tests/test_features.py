@@ -605,7 +605,106 @@ class SettingsAndLockTest(unittest.TestCase):
         self.assertTrue(c.post("/lock/unlock", json={"pin": "000003"}, headers=H).get_json()["logout"])
         self.assertEqual(c.get("/projects").status_code, 302)
 
+    def test_github_token_encryption(self):
+        import git_hub
+        raw_token = "ghp_1234567890abcdefABCDEF"
+        encrypted = git_hub.encrypt_token(raw_token)
+        self.assertTrue(encrypted.startswith("enc:"))
+        self.assertNotEqual(encrypted, raw_token)
+        decrypted = git_hub.decrypt_token(encrypted)
+        self.assertEqual(decrypted, raw_token)
+        # Plaintext backward compatibility
+        self.assertEqual(git_hub.decrypt_token(raw_token), raw_token)
+        self.assertEqual(git_hub.decrypt_token(""), "")
+
+    def test_leads_and_notification(self):
+        # 1. Отправка заявки с лендинга
+        c = T.app.test_client()
+        res = c.post("/lead", data={"name": "Иван", "contact": "@ivan_dev", "about": "Пишу на Python"}, headers=H)
+        self.assertEqual(res.status_code, 302)
+        with M.Session() as s:
+            leads_row = s.get(M.Setting, "leads_archive")
+            self.assertIsNotNone(leads_row)
+            leads = json.loads(leads_row.value)
+            self.assertTrue(len(leads) > 0)
+            self.assertEqual(leads[0]["name"], "Иван")
+            self.assertEqual(leads[0]["contact"], "@ivan_dev")
+            self.assertEqual(leads[0]["status"], "new")
+            lead_id = leads[0]["id"]
+
+        # 2. Просмотр заявок руководителем (/leads)
+        h = T.client("h")
+        r = h.get("/leads")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Иван", r.get_data(as_text=True))
+        self.assertIn("@ivan_dev", r.get_data(as_text=True))
+
+        # Обычный сотрудник без прав не имеет доступа к /leads
+        m1 = T.client("m1")
+        self.assertEqual(m1.get("/leads").status_code, 403)
+
+        # 3. Смена статуса заявки
+        r = h.post(f"/api/lead/{lead_id}/status", data={"status": "in_progress"}, headers=H)
+        self.assertEqual(r.status_code, 302)
+        with M.Session() as s:
+            leads = json.loads(s.get(M.Setting, "leads_archive").value)
+            self.assertEqual(leads[0]["status"], "in_progress")
+
+        # 4. Удаление заявки
+        r = h.post(f"/api/lead/{lead_id}/delete", headers=H)
+        self.assertEqual(r.status_code, 302)
+        with M.Session() as s:
+            leads = json.loads(s.get(M.Setting, "leads_archive").value)
+            self.assertEqual(len(leads), 0)
+
+    def test_team_rename_and_delete(self):
+        h = T.client("h")
+        with M.Session() as s:
+            d = s.query(M.Direction).first()
+            team = M.Team(direction_id=d.id, title="NLP")
+            s.add(team)
+            s.commit()
+            tid = team.id
+
+        # Переименование группы
+        r = h.post(f"/api/team/{tid}/rename", data={"title": "LLM & AI"}, headers=H)
+        self.assertEqual(r.status_code, 302)
+        with M.Session() as s:
+            team = s.get(M.Team, tid)
+            self.assertEqual(team.title, "LLM & AI")
+
+        # Удаление группы
+        r = h.post(f"/api/team/{tid}/delete", headers=H)
+        self.assertEqual(r.status_code, 302)
+        with M.Session() as s:
+            self.assertIsNone(s.get(M.Team, tid))
+
+    def test_person_leads_notify_requires_email(self):
+        h = T.client("h")
+        with M.Session() as s:
+            m = s.get(M.Member, "m1")
+            m.email = ""
+            s.commit()
+
+        # Попытка включить leads_notify без email — не должна сохранять leads.notify в allow
+        h.post("/people/m1", data={"leads_notify": "1"}, headers=H)
+        with M.Session() as s:
+            ma = s.get(M.MemberAccess, "m1")
+            self.assertTrue(not ma or "leads.notify" not in (ma.allow or []))
+
+        # С указанным email — включается успешно
+        with M.Session() as s:
+            m = s.get(M.Member, "m1")
+            m.email = "m1@labunit.ru"
+            s.commit()
+
+        h.post("/people/m1", data={"leads_notify": "1"}, headers=H)
+        with M.Session() as s:
+            ma = s.get(M.MemberAccess, "m1")
+            self.assertIn("leads.notify", ma.allow)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

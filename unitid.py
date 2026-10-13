@@ -95,6 +95,52 @@ def push_tags(member_id: str, add: List[str] = (), remove: List[str] = ()) -> bo
         return False
 
 
+def sync_member(member_id: str) -> bool:
+    """Сверить одну карточку человека с UNIT ID по member_id."""
+    if not enabled():
+        return False
+    import access
+    import models as M
+
+    try:
+        acc = _call("GET", f"/api/service/accounts/{urllib.parse.quote(member_id)}")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            with M.Session() as s:
+                m = s.get(M.Member, member_id)
+                if m:
+                    m.tags = []
+                    s.commit()
+            return True
+        print(f"[unitid] ошибка сверки {member_id}: {error}", flush=True)
+        return False
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        print(f"[unitid] ошибка связи при сверке {member_id}: {error}", flush=True)
+        return False
+
+    with M.Session() as s:
+        ruled = set(access.rules(s))
+        member = s.get(M.Member, acc["id"])
+        tags = list(acc.get("tags") or [])
+        if member is None:
+            if acc.get("disabled") or not (set(tags) & ruled):
+                return False
+            member = M.Member(id=acc["id"], name=acc.get("name") or acc.get("email", ""),
+                              email=acc.get("email") or "", role="member", tags=tags)
+            s.add(member)
+            s.commit()
+            return True
+        new_tags = [] if acc.get("disabled") else tags
+        if (member.name, member.email, member.tags or []) != (acc.get("name") or member.name,
+                                                              acc.get("email") or member.email, new_tags):
+            member.name = acc.get("name") or member.name
+            member.email = acc.get("email") or member.email
+            member.tags = new_tags
+            s.commit()
+            return True
+    return False
+
+
 def pull() -> int:
     """Сверить людей с UNIT ID. → сколько карточек изменилось."""
     if not enabled():

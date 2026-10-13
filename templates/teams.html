@@ -13,14 +13,14 @@
 
 <div class="grid g3 team-grid">
   {% for d in rows %}{% set i = info[d.id] %}
-  <article class="panel team-card">
+  <article class="panel team-card" onclick="if(!event.target.closest('.team-menu')) window.location='/d/{{ d.slug }}'">
     <a class="team-link" href="/d/{{ d.slug }}" aria-label="{{ d.title }}"></a>
     <div class="row" style="gap: 12px">
       <span class="badge t-{{ d.tone }}">{{ dir_icon(d, 22) }}</span>
-      <div class="grow stack-xs" style="gap: 1px; min-width: 0"><h3 class="truncate">{{ d.title }}</h3>
+      <div class="grow stack-xs" style="gap: 1px; min-width: 0"><h3 class="truncate"><a href="/d/{{ d.slug }}" style="color: inherit; text-decoration: none">{{ d.title }}</a></h3>
         <span class="tiny faint">{% if i.lead %}лид — {{ i.lead.name }}{% else %}лид не назначен{% endif %}</span></div>
       {% if can('teams.manage') %}
-      <form method="post" class="team-menu">
+      <form method="post" class="team-menu" onclick="event.stopPropagation()">
         <button class="icon-btn" type="submit" name="delete" value="{{ d.id }}" title="Удалить команду" aria-label="Удалить команду {{ d.title }}"
                 data-confirm="Удалить команду «{{ d.title }}»? Люди и проекты останутся, но без команды.">{{ icon('trash', 16) }}</button>
       </form>

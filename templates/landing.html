@@ -1,117 +1,431 @@
 {% extends 'base.html' %}
-{% from '_icons.html' import icon, dir_icon, progress, logo %}
-{% block title %}Лаборатория UNIT — безопасность, разработка, нейросети{% endblock %}
-{% block meta %}<meta name="description" content="IT-лаборатория UNIT: информационная безопасность, разработка программного обеспечения и нейросети. Ведём проекты от постановки задачи до релиза.">{% endblock %}
+{% from '_icons.html' import icon, logo %}
+{% block title %}Лаборатория UNIT — для тех, кто делает{% endblock %}
+{% block meta %}<meta name="description" content="Лаборатория UNIT: собираем команды вокруг идей, помогаем довести их до результата. Проект остаётся твоим.">{% endblock %}
 {% block body %}
 <header class="site-top">
   <div class="wrap">
-    <a class="logo" href="/">{{ logo('Лаборатория') }}</a>
-    <nav class="site-nav">
-      <a href="#directions">Направления</a>
-      <a href="#process">Как работаем</a>
-      {% if showcase %}<a href="#projects">Проекты</a>{% endif %}
-      <a href="#contact">Контакты</a>
-    </nav>
-    <div class="spacer">
-      {% if me %}<a class="btn btn-primary btn-sm" href="/home">Открыть портал {{ icon('arrow', 14) }}</a>
-      {% else %}<a class="btn btn-ghost btn-sm" href="/login">{{ icon('user', 15) }}Войти</a>{% endif %}
+    <div style="display: flex; align-items: center; gap: 28px">
+      <a class="logo" href="/">{{ logo('Лаборатория') }}</a>
+      <nav class="site-nav">
+        <a href="#unit">О лаборатории</a>
+        <a href="#how">Как работаем</a>
+        <a href="#teams">Команды</a>
+        <a href="#projects">Проекты</a>
+        <a href="#money">Про деньги</a>
+      </nav>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center; flex-shrink: 0">
+      {% if me %}
+      <a class="btn btn-primary btn-sm" href="https://app.labunit.ru/home">В кабинет {{ icon('arrow', 14) }}</a>
+      {% else %}
+      <a class="btn btn-ghost btn-sm" href="https://app.labunit.ru/login">{{ icon('user', 15) }}Войти</a>
+      <a class="btn btn-primary btn-sm" href="#contact">Написать {{ icon('arrow', 14) }}</a>
+      {% endif %}
     </div>
   </div>
 </header>
 
 <main>
-  <section class="hero">
-    <div class="wrap">
-      <span class="eyebrow"><span class="dot"></span>IT-лаборатория UNIT</span>
-      <h1>Безопасность, разработка и нейросети — одной командой</h1>
-      <p class="lead">Проверяем защищённость систем, пишем сервисы и приложения, обучаем и внедряем модели.
-        Ведём проект от постановки задачи до релиза и показываем, на каком этапе работа.</p>
-      <div class="row-wrap" style="margin-top: 34px; gap: 12px">
-        <a class="btn btn-accent btn-lg" href="#contact">Обсудить задачу {{ icon('arrow', 17) }}</a>
-        <a class="btn btn-ghost btn-lg" href="/login">Вход для команды и заказчиков</a>
+  <!-- ── ХИРО ── -->
+  <section class="hero" style="padding: 100px 0 80px; text-align: center">
+    <div class="wrap" style="max-width: 860px; margin: 0 auto">
+      <span class="eyebrow" style="display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px">
+        <span class="dot"></span>Лаборатория UNIT
+      </span>
+      <h1 style="font-size: clamp(38px, 5.2vw, 66px); line-height: 1.08; letter-spacing: -0.03em; margin: 0 auto 22px">
+        Лаборатория для тех, кто делает.
+      </h1>
+      <p class="lead" style="font-size: clamp(18px, 1.6vw, 22px); line-height: 1.5; color: var(--ink-2); max-width: 680px; margin: 0 auto 36px">
+        Собираем команды вокруг идей, помогаем довести их до результата. Проект остаётся твоим.
+      </p>
+      <div style="display: flex; gap: 14px; justify-content: center; align-items: center; flex-wrap: wrap">
+        <a class="btn btn-accent btn-lg" href="#contact" style="padding: 14px 28px; font-size: 16px">
+          Рассказать о себе {{ icon('arrow', 17) }}
+        </a>
+        <a class="btn btn-ghost btn-lg" href="https://app.labunit.ru/login" style="padding: 14px 24px; font-size: 15px">
+          Войти через UNIT ID
+        </a>
       </div>
-      <div class="hero-facts">
-        <div><b>3</b><span>направления</span></div>
-        <div><b>4</b><span>этапа в каждом проекте</span></div>
-        {% if people %}<div><b>{{ people }}</b><span>в команде</span></div>{% endif %}
-        <div><b>1</b><span>аккаунт UNIT ID для всего</span></div>
+      <div class="hero-facts" style="justify-content: center; margin-top: 56px; gap: 48px">
+        <div><b>100%</b><span>авторство у команды</span></div>
+        <div><b>0₽</b><span>за вход в лабораторию</span></div>
+        <div><b>Реальная практика</b><span>вместо имитации и лекций</span></div>
       </div>
     </div>
   </section>
 
-  <section class="section" id="directions">
+  <!-- ── ЕСЛИ ЭТО ПРО ТЕБЯ ── -->
+  <section class="section" id="about">
     <div class="wrap">
       <div class="section-head">
-        <div class="stack-sm"><span class="label-mono">Направления</span><h2>Три группы инженеров</h2></div>
-        <p>Часто работают над одним проектом вместе: разработчики пишут сервис, специалисты по безопасности его проверяют, группа нейросетей добавляет модели.</p>
+        <div class="stack-sm"><span class="label-mono">Знакомство</span><h2>Если это про тебя</h2></div>
+        <p>Мы работаем с теми, кто уже начал действовать и хочет двигаться дальше.</p>
       </div>
-      <div class="grid g3">
-        {% for d in directions %}
-        <div class="panel dir-card">
-          <span class="badge t-{{ d.tone }}">{{ dir_icon(d, 22) }}</span>
-          <h3 style="font-size: 19px">{{ d.title }}</h3>
-          <p class="muted small">{{ d.about }}</p>
+      <div class="grid g2" style="gap: 24px">
+        <div class="card-unit">
+          <span class="num">01 // ОПЫТ</span>
+          <h3>У тебя за спиной уже что-то есть</h3>
+          <p>Проект, задача, инструмент — что-то, что ты собрал руками и знаешь, как это работает. Может быть, это ещё не закончено, но это реально.</p>
+        </div>
+        <div class="card-unit">
+          <span class="num">02 // КОМАНДА</span>
+          <h3>Не хочется работать в одиночку</h3>
+          <p>Рядом нужны люди, которые понимают, о чём ты говоришь, и могут добавить своё. И чтобы работа шла дальше, чем презентация на защиту.</p>
+        </div>
+      </div>
+      <div style="margin-top: 24px; padding: 22px 28px; border-radius: 16px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap">
+        <div style="font-size: 17px; font-weight: 600; color: var(--ink)">Если это созвучно — дальше про тебя.</div>
+        <a class="btn btn-ghost btn-sm" href="#unit">Читать дальше {{ icon('down', 14) }}</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ЧТО ТАКОЕ UNIT ── -->
+  <section class="section" id="unit">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="stack-sm"><span class="label-mono">Формат</span><h2>Что такое UNIT</h2></div>
+        <p>Лаборатория создана практиками для практиков — с честными правилами игры.</p>
+      </div>
+      <div class="grid g3" style="gap: 22px">
+        <div class="card-unit">
+          <span class="badge t-indigo" style="margin-bottom: 4px">{{ icon('layers', 20) }}</span>
+          <h3>Не кружок и не акселератор</h3>
+          <p>Это не акселератор и не учебный кружок. Это лаборатория — место, где собираются люди, которые уже что-то делают, и помогают друг другу доводить это до конца.</p>
+        </div>
+        <div class="card-unit">
+          <span class="badge t-teal" style="margin-bottom: 4px">{{ icon('target', 20) }}</span>
+          <h3>Мы ищем таланты в деле</h3>
+          <p>Не абстрактный потенциал, а людей, которые уже работают. И помогаем им выйти туда, где их работа получит вес: гранты, заказчики, продукт, который используют.</p>
+        </div>
+        <div class="card-unit">
+          <span class="badge t-amber" style="margin-bottom: 4px">{{ icon('shield', 20) }}</span>
+          <h3>Хозяин своей идеи — ты</h3>
+          <p>Главное — ты остаёшься хозяином своей идеи. Мы помогаем, связываем, открываем двери. Но проект, решение, авторство — всё остаётся у тебя.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── КАК ЭТО РАБОТАЕТ ── -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="stack-sm"><span class="label-mono">Процесс</span><h2>Как это работает</h2></div>
+        <p>Четыре понятных шага: от первой наработки до признанного результата.</p>
+      </div>
+      <div class="grid g4" style="gap: 18px">
+        <div class="pipeline-step">
+          <div class="step-idx">01</div>
+          <h3 style="font-size: 17px">Ты приходишь со своим</h3>
+          <p class="muted small">Идеей, проектом, задачей, которую ты решал. Показываешь, что ты уже сделал.</p>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-idx">02</div>
+          <h3 style="font-size: 17px">Мы ищем твою команду</h3>
+          <p class="muted small">Может быть, нужен человек с другим профилем. Может, экспертиза в конкретной теме. Помогаем собрать сильных людей.</p>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-idx">03</div>
+          <h3 style="font-size: 17px">Доводим до результата</h3>
+          <p class="muted small">Помогаем упаковать идею так, чтобы её заметили. Рассказываем про гранты, заказчиков и оформление. Но делаешь всё ты.</p>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-idx">04</div>
+          <h3 style="font-size: 17px">Результат — твой</h3>
+          <p class="muted small">Код, проект, название, портфолио, деньги — всё остаётся у тебя и твоей команды.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── КОМАНДЫ (ДИНАМИЧЕСКИ ИЗ БАЗЫ) ── -->
+  <section class="section" id="teams">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="stack-sm"><span class="label-mono">Люди и фокус</span><h2>Команды лаборатории</h2></div>
+        <p>Инженерные группы, объединяющие специалистов вокруг задач, сервисов и исследований.</p>
+      </div>
+      {% if teams %}
+      <div class="grid g3" style="gap: 22px">
+        {% for t in teams %}
+        <div class="card-unit">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            {% if t.direction %}
+            <span class="chip tone t-{{ t.direction.tone }}">{{ t.direction.title }}</span>
+            {% else %}
+            <span class="num">КОМАНДА #{{ t.id }}</span>
+            {% endif %}
+            <span class="hero-tag" style="margin: 0; padding: 3px 10px; font-size: 12px"><span class="dot"></span>{{ t.count }} уч.</span>
+          </div>
+          <h3 style="margin-top: 6px">{{ t.title }}</h3>
+          {% if t.members %}
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px">
+            {% for m in t.members %}
+            <span class="chip" style="font-size: 12px; background: var(--surface-2)">{{ m }}</span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="muted small">Команда открыта для присоединения новых участников с релевантным стеком.</p>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
+      {% else %}
+      <div class="grid g3" style="gap: 22px">
+        <div class="card-unit">
+          <span class="badge t-indigo">{{ icon('code', 20) }}</span>
+          <h3>Инженерная разработка</h3>
+          <p>Архитектура сервисов, бэкенд, фронтенд, системное программирование и создание отказоустойчивых платформ.</p>
+        </div>
+        <div class="card-unit">
+          <span class="badge t-teal">{{ icon('shield', 20) }}</span>
+          <h3>Информационная безопасность</h3>
+          <p>Аудит защищённости, реверс-инжиниринг, тестирование на проникновение и криптографический анализ.</p>
+        </div>
+        <div class="card-unit">
+          <span class="badge t-violet">{{ icon('cpu', 20) }}</span>
+          <h3>Искусственный интеллект</h3>
+          <p>Прикладные ML/LLM пайплайны, агентные архитектуры, обучение моделей и интеграция в продукты.</p>
+        </div>
+      </div>
+      <div style="margin-top: 20px; font-size: 13.5px; color: var(--ink-3); text-align: center">
+        Команды формируются динамически вокруг конкретных проектов и задач резидентов.
+      </div>
+      {% endif %}
     </div>
   </section>
 
-  <section class="section" id="process">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="stack-sm"><span class="label-mono">Как работаем</span><h2>Проект виден по этапам</h2></div>
-        <p>Проект делим на части. По каждой видно, на каком она этапе и сколько готово, — заказчик смотрит это в портале, а не ждёт отчёта.</p>
-      </div>
-      <div class="panel steps">
-        <div><div class="w"><i style="width: 15%"></i></div><span class="label-mono">01 · 15%</span><b>Планирование</b><span class="small muted">Разбираемся в задаче, делим её на части, договариваемся о сроках и результате.</span></div>
-        <div><div class="w"><i style="width: 65%"></i></div><span class="label-mono">02 · 50%</span><b>Реализация</b><span class="small muted">Пишем код, проводим исследования, показываем промежуточные версии.</span></div>
-        <div><div class="w"><i style="width: 90%"></i></div><span class="label-mono">03 · 25%</span><b>Тестирование</b><span class="small muted">Проверяем работу и безопасность до того, как продукт увидят пользователи.</span></div>
-        <div><div class="w"><i style="width: 100%"></i></div><span class="label-mono">04 · 10%</span><b>Релиз</b><span class="small muted">Запускаем, передаём документацию и остаёмся на связи после запуска.</span></div>
-      </div>
-    </div>
-  </section>
-
-  {% if showcase %}
+  <!-- ── НАД ЧЕМ РАБОТАЕМ ── -->
   <section class="section" id="projects">
     <div class="wrap">
       <div class="section-head">
         <div class="stack-sm"><span class="label-mono">Проекты</span><h2>Над чем работаем</h2></div>
-        <p>Часть работ, о которых можно рассказать.</p>
+        <p>Реальные задачи и продукты, которые разрабатываются командами лаборатории.</p>
       </div>
-      <div class="grid g2">
+      {% if showcase %}
+      <div class="grid g2" style="gap: 24px">
         {% for item in showcase %}{% set p = item.p %}
-        <div class="panel proj">
-          <div class="top">
-            {% if item.direction %}<span class="chip tone t-{{ item.direction.tone }}">{{ item.direction.title }}</span>{% endif %}
-            <span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses[p.status] }}</span>
+        <div class="card-unit" style="padding: 26px">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            {% if item.direction %}<span class="chip tone t-{{ item.direction.tone }}">{{ item.direction.title }}</span>{% else %}<span class="num">UNIT LAB</span>{% endif %}
+            <span class="chip tone s-{{ p.status }}"><span class="dot"></span>{{ statuses.get(p.status, p.status) }}</span>
           </div>
-          <div class="stack-xs"><h3>{{ p.public_title or p.title }}</h3><p class="muted small">{{ p.public_text or p.summary }}</p></div>
-          {% if p.status != 'done' %}<div class="bar">{{ progress(item.percent) }}<span class="pct">{{ item.percent }}<small>%</small></span></div>{% endif %}
+          <h3 style="font-size: 20px; margin-top: 8px">{{ p.public_title or p.title }}</h3>
+          <p class="muted small">{{ p.public_text or p.summary }}</p>
+          {% if p.status != 'done' %}
+          <div style="margin-top: 14px; display: flex; align-items: center; gap: 12px">
+            <div style="flex: 1; height: 5px; border-radius: 99px; background: var(--sunken); overflow: hidden">
+              <div style="height: 100%; width: {{ item.percent }}%; background: linear-gradient(90deg, var(--accent), var(--accent-2))"></div>
+            </div>
+            <span style="font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-2)">{{ item.percent }}%</span>
+          </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
+      {% else %}
+      <div class="card-unit" style="padding: 38px 28px; text-align: center; max-width: 720px; margin: 0 auto">
+        <span class="badge t-indigo" style="margin: 0 auto 14px">{{ icon('folder', 22) }}</span>
+        <h3 style="font-size: 20px">Проекты в закрытом контуре разработки</h3>
+        <p style="margin-top: 8px">Проекты резидентов находятся в активной разработке во внутреннем портале лаборатории. Они публикуются здесь по мере выхода на этап публичного релиза и привлечения грантов.</p>
+      </div>
+      {% endif %}
     </div>
   </section>
-  {% endif %}
 
-  <section class="section" id="contact">
+  <!-- ── КАК ПОПАДАЮТ В ЛАБОРАТОРИЮ ── -->
+  <section class="section" id="join">
     <div class="wrap">
-      <div class="cta">
-        <div>
-          <h2 style="font-size: clamp(24px, 2.6vw, 32px)">Есть задача?</h2>
-          <p>Опишите, что нужно сделать и к какому сроку. Ответим в течение рабочего дня и предложим, как разбить работу на этапы.</p>
+      <div class="section-head">
+        <div class="stack-sm"><span class="label-mono">Отбор</span><h2>Как попадают в лабораторию</h2></div>
+        <p>Мы работаем с небольшим числом людей — не потому что хотим быть эксклюзивны, а потому что хотим работать качественно. Поэтому сначала знакомимся.</p>
+      </div>
+      <div class="grid g3" style="gap: 22px">
+        <div class="card-unit">
+          <span class="num">ШАГ 1</span>
+          <h3>Покажи, что ты уже делал</h3>
+          <p>Репозиторий, разбор задачи, свой инструмент, статью, просто рассказ о проекте — что угодно. Главное, чтобы было видно твой уровень и как ты думаешь.</p>
         </div>
-        {% if config.get('LAB_CONTACT') %}
-        <a class="btn btn-ghost btn-lg" href="mailto:{{ config['LAB_CONTACT'] }}">{{ icon('mail', 17) }}{{ config['LAB_CONTACT'] }}</a>
-        {% else %}
-        <a class="btn btn-ghost btn-lg" href="/login">{{ icon('arrow', 17) }}Войти и оставить заявку</a>
+        <div class="card-unit">
+          <span class="num">ШАГ 2</span>
+          <h3>Если готового пока нет</h3>
+          <p>Если готового проекта пока нет, но ты глубоко разбираешься в чём-то — расскажи об этом. Нам важно понять, кто ты и совпадаем ли мы.</p>
+        </div>
+        <div class="card-unit">
+          <span class="num">ШАГ 3</span>
+          <h3>Отвечаем лично</h3>
+          <p>Каждую заявку разбираем лично. Если наши цели и подход совпадают — начинаем работать сразу.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ПОЧЕМУ ЛЮДИ ОСТАЮТСЯ ── -->
+  <section class="section" id="people">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="stack-sm"><span class="label-mono">Ценности</span><h2>Почему люди остаются</h2></div>
+        <p>Среда, в которой проекты действительно доводятся до конца.</p>
+      </div>
+      <div class="grid g2" style="gap: 24px">
+        <div class="card-unit">
+          <span class="badge t-teal">{{ icon('flash', 19) }}</span>
+          <h3>Здесь не имитация, а реальная работа</h3>
+          <p>Не абстрактные лекции про успех, а ежедневная инженерная практика и конкретные решения.</p>
+        </div>
+        <div class="card-unit">
+          <span class="badge t-indigo">{{ icon('users', 19) }}</span>
+          <h3>Люди твоего уровня или выше</h3>
+          <p>Ты работаешь с теми, кто глубоко разбирается в своём деле. Это вдохновляет, это редко и это ценно.</p>
+        </div>
+        <div class="card-unit">
+          <span class="badge t-emerald">{{ icon('chart', 19) }}</span>
+          <h3>Виден результат</h3>
+          <p>Не оценка в зачётке или пустые слова, а реальное движение проекта: грант, заказчик, пользователи, релиз.</p>
+        </div>
+        <div class="card-unit">
+          <span class="badge t-violet">{{ icon('spark', 19) }}</span>
+          <h3>Твоя работа не закончится в папке</h3>
+          <p>Она будет видна миру — в портфолио, в резюме, в запущенном продукте и своём деле.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ПРО ДЕНЬГИ ── -->
+  <section class="section" id="money">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="stack-sm"><span class="label-mono">Экономика</span><h2>Про деньги</h2></div>
+        <p>Честный и прозрачный подход к монетизации и сотрудничеству.</p>
+      </div>
+      <div class="money-card">
+        <div class="money-headline">Мы не берём денег за вход в лабораторию и не претендуем на твой проект.</div>
+        <div class="money-body">
+          Лаборатория живет за счёт того, что помогает командам выйти на деньги — гранты, заказчики. Если это получается, мы берём небольшую долю. Если проект пока без денег — ты ничего не должен. Помощь, люди, связи — это доступно независимо от того, монетизируется ли проект.
+        </div>
+        <div class="money-foot">
+          {{ icon('check', 20) }}
+          <span>Нам выгодно, чтобы у тебя получилось. Иначе и нам не выгодно.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ФИНАЛ / КОНТАКТНАЯ ФОРМА ── -->
+  <section class="section" id="contact" style="padding-bottom: 80px">
+    <div class="wrap" style="max-width: 920px">
+      <div class="contact-card">
+        <div class="contact-header">
+          <div>
+            <span class="eyebrow"><span class="dot"></span>Финал</span>
+            <h2 style="font-size: clamp(26px, 3vw, 36px); margin-top: 10px">Напиши пару строк о себе</h2>
+            <p class="lead" style="font-size: 15.5px; margin-top: 8px; color: var(--ink-2)">
+              Чем занимаешься, что уже сделал, что интересует. Этого хватит для начала.
+            </p>
+          </div>
+          <div class="contact-badge">
+            {{ icon('spark', 15) }}
+            <span>Отвечу лично</span>
+          </div>
+        </div>
+
+        {% if lead_status == 'success' %}
+        <div class="lead-alert success">
+          {{ icon('check', 17) }} <span>Спасибо! Заявка получена, скоро отвечу лично.</span>
+        </div>
+        {% elif lead_status == 'error' %}
+        <div class="lead-alert error">
+          <span>Пожалуйста, укажите контакты для связи и пару слов о себе.</span>
+        </div>
         {% endif %}
+
+        <form method="post" action="/lead" id="lead-form" class="stack" style="gap: 16px">
+          <div class="fgrid two" style="gap: 16px">
+            <label class="field">
+              <span class="label">Как тебя зовут</span>
+              <input class="input" name="name" placeholder="Имя или никнейм" required autocomplete="name">
+            </label>
+            <label class="field">
+              <span class="label">Контакт для связи (Telegram / email)</span>
+              <input class="input" name="contact" placeholder="@username или name@domain.ru" required autocomplete="email">
+            </label>
+          </div>
+          <label class="field">
+            <span class="label">Пару строк о себе</span>
+            <textarea class="textarea" name="about" rows="3" placeholder="Чем занимаешься, что уже собрал руками, ссылки на GitHub или проекты" style="resize: vertical"></textarea>
+          </label>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 8px; flex-wrap: wrap">
+            <div id="lead-ajax-msg" style="display: none; padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 500"></div>
+            <button class="btn btn-primary btn-lg" type="submit" style="padding: 12px 28px; margin-left: auto">
+              Написать {{ icon('arrow', 17) }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </section>
 </main>
-<footer class="foot">
-  <div class="wrap"><span>Лаборатория UNIT</span><a href="https://courses.labunit.ru">Школа UNIT</a><span class="spacer">Вход — через аккаунт UNIT ID</span></div>
+
+<footer class="foot" style="border-top: 1px solid var(--line); margin-top: 40px">
+  <div class="wrap">
+    <div style="display: flex; align-items: center; gap: 10px">
+      {{ logo('Лаборатория') }}
+    </div>
+    <div class="spacer" style="display: flex; gap: 20px; flex-wrap: wrap">
+      <a href="https://courses.labunit.ru" target="_blank" rel="noopener">Школа UNIT</a>
+      <a href="https://id.labunit.ru" target="_blank" rel="noopener">UNIT ID</a>
+      <a href="https://app.labunit.ru" target="_blank" rel="noopener">Портал лаборатории</a>
+    </div>
+    <span class="muted small">Единый вход через аккаунт UNIT ID</span>
+  </div>
 </footer>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("lead-form");
+  const msg = document.getElementById("lead-ajax-msg");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector("button[type='submit']");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch("/lead", {
+        method: "POST",
+        headers: { "Accept": "application/json" },
+        body: new FormData(form)
+      });
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (err) {
+        data = {};
+      }
+      if (res.ok) {
+        form.reset();
+        msg.style.display = "block";
+        msg.style.background = "rgba(16, 185, 129, 0.15)";
+        msg.style.color = "#10b981";
+        msg.textContent = data.message || "Спасибо! Заявка принята, скоро свяжемся лично.";
+      } else {
+        msg.style.display = "block";
+        msg.style.background = "rgba(239, 68, 68, 0.15)";
+        msg.style.color = "#ef4444";
+        msg.textContent = data.error || "Ошибка отправки. Попробуйте еще раз.";
+      }
+    } catch (err) {
+      msg.style.display = "block";
+      msg.style.background = "rgba(239, 68, 68, 0.15)";
+      msg.style.color = "#ef4444";
+      msg.textContent = "Ошибка связи с сервером. Попробуйте еще раз.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+});
+</script>
 {% endblock %}
