@@ -48,30 +48,47 @@ class AccessTest(unittest.TestCase):
         c.post("/view", data={"view": "руководитель лаборатории"}, headers=H)          # чужой кабинет не взять
         self.assertEqual(c.get("/access").status_code, 403)
 
-    def test_tags_and_personal_rights(self):
+    def test_access_lives_in_unit_id(self):
+        import unitid
+        from unittest import mock
         h = T.client("h")
-        for url in ("/access", "/access?tab=tags", "/access/person/m1", "/access/tag/сотрудник", "/admin", "/teams"):
-            self.assertEqual(h.get(url).status_code, 200, url)
-        h.post("/access/person/m1", data={"action": "tag_add", "tag": "Доступ к ИИ"}, headers=H)
-        with M.Session() as s:
-            self.assertIn("доступ к ии", s.get(M.Member, "m1").tags)
-        # Личный запрет перекрывает теги, личное разрешение — добавляет
-        h.post("/access/person/m1", data={"action": "personal", "p:page.time": "deny", "p:admin.overview": "allow",
-                                          "l:ai_day_usd": "0,5"}, headers=H)
+        unitid_id, unitid.CLIENT_ID = unitid.CLIENT_ID, "unit-lab"
+        self.addCleanup(setattr, unitid, "CLIENT_ID", unitid_id)
+        for url, tail in (("/access", "/access/unit-lab"), ("/access/person/m1", "/person/m1"), ("/access/tag/сотрудник", "/tag/")):
+            r = h.get(url)
+            self.assertEqual(r.status_code, 302, url)
+            self.assertIn(tail, r.headers["Location"])
+        self.assertEqual(T.client("m1").get("/access").status_code, 403)
+        # Первый раз лаборатория отдаёт в UNIT ID каталог и свои правила; дальше — только забирает копию
+        sent = []
+
+        def fake(method, path, data=None):
+            sent.append((method, path, data))
+            if method == "POST":
+                return {"rules": data["seed_rules"], "personal": {"m1": {"allow": ["admin.overview"], "deny": ["page.time"],
+                                                                          "limits": {"ai_day_usd": 0.5}}}, "version": 7}
+            return {"same": True, "version": 7}
+        saved = dict(unitid._access)
+        try:
+            with mock.patch.object(unitid, "enabled", return_value=True), mock.patch.object(unitid, "_call", fake):
+                unitid._access.update(version=None, declared=False)
+                self.assertTrue(unitid.sync_access())
+                self.assertFalse(unitid.sync_access())                         # не менялось — ничего не трогаем
+        finally:
+            unitid._access.update(saved)
+        declared = sent[0][2]
+        self.assertIn("сотрудник", [r["tag"] for r in declared["seed_rules"]])
+        self.assertEqual(declared["admin_key"], "admin.access")
+        self.assertIn("journal.moderate", declared["grants"])
+        self.assertEqual(sent[1][1], "/api/service/access?v=7")
         m1 = T.client("m1")
-        self.assertEqual(m1.get("/time").status_code, 403)
+        self.assertEqual(m1.get("/time").status_code, 403)                   # личный запрет из UNIT ID
         self.assertEqual(m1.get("/admin").status_code, 200)
-        h.post("/access/person/m1", data={"action": "personal"}, headers=H)                   # всё по тегам
+        with M.Session() as s:
+            unitid._mirror(s, {"rules": declared["seed_rules"], "personal": {}})
+            s.commit()
         self.assertEqual(m1.get("/time").status_code, 200)
         self.assertEqual(m1.get("/admin").status_code, 403)
-        # Новый тег с правами — сразу действует
-        h.post("/access/tag", data={"tag": "наблюдатель", "title": "Наблюдатель"}, headers=H)
-        h.post("/access/tag/наблюдатель", data={"title": "Наблюдатель", "p:admin.overview": "1"}, headers=H)
-        h.post("/access/person/m1", data={"action": "tag_add", "tag": "наблюдатель"}, headers=H)
-        self.assertEqual(m1.get("/admin").status_code, 200)
-        # Себе «Доступы» не закрыть
-        h.post("/access/person/h", data={"action": "personal", "p:admin.access": "deny"}, headers=H)
-        self.assertEqual(h.get("/access").status_code, 200)
 
     def test_teams(self):
         h = T.client("h")
@@ -517,7 +534,8 @@ class SupportSectionTest(unittest.TestCase):
             self.assertEqual(t.status, "resolved")
 
         # 5. Удаление обращения сотрудником/админом
-        del_res = c.post(f"/support/{tid}/delete", follow_redirects=True)
+        self.assertEqual(c.post(f"/support/{tid}/delete").status_code, 403)   # автор — не поддержка
+        del_res = T.client("h").post(f"/support/{tid}/delete", follow_redirects=True)
         self.assertEqual(del_res.status_code, 200)
         with M.Session() as s:
             self.assertIsNone(s.get(M.SupportTicket, tid))

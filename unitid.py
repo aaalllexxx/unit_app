@@ -7,6 +7,8 @@
 * pull — раз в 2 минуты забираем аккаунты: имена, почты и теги у тех, кто уже
   есть в лаборатории, и новых людей с тегами, на которые есть правило.
 * services — список сервисов UNIT для меню (из /api/services, кеш 10 минут).
+* sync_access — доступы (правила тегов, личные права) настраиваются только в UNIT ID;
+  здесь их копия, сверка раз в 30 секунд.
 * tokens — личные токены API лаборатории: выпускает и хранит UNIT ID (одна система
   токенов для всех сервисов), портал просит его служебным ключом от имени человека.
 """
@@ -147,14 +149,111 @@ def pull() -> int:
     return changed
 
 
+# ─── Доступы: настраиваются только в UNIT ID ────────────────────────────────
+# Лаборатория сообщает свой каталог прав и лимитов; в первый раз отдаёт и свои
+# правила тегов и личные права (перенос). Дальше UNIT ID — единственное место, где их
+# меняют, а лаборатория держит копию (TagRule, MemberAccess) — права проверяются
+# мгновенно и без связи — и сверяет её раз в ACCESS_EVERY секунд по номеру версии.
+ID_URL = os.environ.get("LAB_ID_URL", ISSUER).rstrip("/")
+ACCESS_EVERY = 30
+_access = {"version": None, "declared": False}
+
+
+def access_url(path: str = "") -> str:
+    """Адрес раздела «Доступы» лаборатории в UNIT ID."""
+    return f"{ID_URL}/access/{urllib.parse.quote(CLIENT_ID)}{path}" if CLIENT_ID else f"{ID_URL}/access"
+
+
+def _mirror(s, conf: dict) -> None:
+    """Копия правил из UNIT ID — целиком заменяет локальные."""
+    import models as M
+
+    wanted = {r["tag"]: r for r in conf.get("rules") or []}
+    for row in s.scalars(select(M.TagRule)):
+        if row.tag not in wanted:
+            s.delete(row)
+    for tag, r in wanted.items():
+        row = s.get(M.TagRule, tag) or M.TagRule(tag=tag)
+        row.title, row.is_view, row.tone = r.get("title") or tag, bool(r.get("is_view")), r.get("tone") or "blue"
+        row.privileges, row.limits, row.position = list(r.get("privileges") or []), dict(r.get("limits") or {}), int(r.get("position") or 0)
+        s.add(row)
+    personal = conf.get("personal") or {}
+    for row in s.scalars(select(M.MemberAccess)):
+        if row.member_id not in personal:
+            s.delete(row)
+    for uid, p in personal.items():
+        if not s.get(M.Member, uid):
+            continue                           # человека в лаборатории ещё нет — придёт со сверкой аккаунтов
+        row = s.get(M.MemberAccess, uid) or M.MemberAccess(member_id=uid)
+        row.allow, row.deny, row.limits = list(p.get("allow") or []), list(p.get("deny") or []), dict(p.get("limits") or {})
+        s.add(row)
+
+
+def sync_access(force: bool = False) -> bool:
+    """Сообщить каталог (один раз за запуск) и забрать правила, если они менялись. → обновилось ли."""
+    if not enabled():
+        return False
+    import access
+    import models as M
+
+    try:
+        if not _access["declared"]:
+            with M.Session() as s:
+                seed_rules = [{"tag": r.tag, "title": r.title, "is_view": r.is_view, "privileges": r.privileges or [],
+                               "limits": r.limits or {}, "tone": r.tone, "position": r.position}
+                              for r in access.rules(s).values()]
+                seed_personal = {a.member_id: {"allow": a.allow or [], "deny": a.deny or [], "limits": a.limits or {}}
+                                 for a in s.scalars(select(M.MemberAccess))}
+            catalog = [[group, [list(item) for item in items]] for group, items in access.CATALOG]
+            limits = {k: [v[0], v[1]] for k, v in access.LIMITS.items()}
+            conf = _call("POST", "/api/service/access", {"catalog": catalog, "limits": limits, "admin_key": "admin.access",
+                                                         "seed_rules": seed_rules, "seed_personal": seed_personal,
+                                                         "grants": dict(access.GRANTS)})
+            _access["declared"] = True
+        else:
+            v = "" if force or _access["version"] is None else str(_access["version"])
+            conf = _call("GET", "/api/service/access" + (f"?v={v}" if v else ""))
+            if conf.get("same"):
+                return False
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        print(f"[unitid] доступы не сверены: {error}", flush=True)
+        return False
+    with M.Session() as s:
+        _mirror(s, conf)
+        s.commit()
+    _access["version"] = conf.get("version")
+    return True
+
+
+def access_person(member_id: str, allow, deny, limits) -> None:
+    """Личные права человека — в UNIT ID (например, их меняет агент), затем копия здесь."""
+    import models as M
+
+    try:
+        conf = _call("POST", f"/api/service/access/person/{urllib.parse.quote(member_id)}",
+                     {"allow": list(allow), "deny": list(deny), "limits": dict(limits)})
+    except urllib.error.HTTPError as error:
+        raise UnitIdError(f"UNIT ID не принял права ({error.code})") from error
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        raise UnitIdError("UNIT ID не ответил — попробуйте через минуту") from error
+    with M.Session() as s:
+        _mirror(s, conf)
+        s.commit()
+    _access["version"] = conf.get("version")
+
+
 def _worker() -> None:
     time.sleep(10)
+    tick = 0
     while True:
         try:
-            pull()
+            if tick % max(1, PULL_EVERY // ACCESS_EVERY) == 0:
+                pull()
+            sync_access()
         except Exception as error:  # noqa: BLE001 — поток не должен умирать
             print(f"[unitid] {error}", flush=True)
-        time.sleep(PULL_EVERY)
+        tick += 1
+        time.sleep(ACCESS_EVERY)
 
 
 def start() -> None:

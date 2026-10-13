@@ -1027,6 +1027,9 @@ def set_person_tags(lane, a):
     import unitid
     m = _member(a.get("member_id"))
     add = [t for t in (rights.clean_tag(x) for x in a.get("add") or []) if t and t not in (m.tags or [])]
+    unknown = [t for t in add if t not in access.rules(db())]
+    if unknown:   # роли UNIT ID и чужие теги выдаёт только UNIT ID
+        raise ToolError("Выдавать можно только теги с правилом лаборатории: " + ", ".join("#" + t for t in unknown))
     remove = [t for t in (str(x) for x in a.get("remove") or []) if t in (m.tags or [])]
     if m.id == g.me.id and remove:
         probe = M.Member(id=m.id, tags=[t for t in m.tags or [] if t not in remove])
@@ -1067,8 +1070,16 @@ def set_person_access(lane, a):
                 limits[key] = max(0.0, min(10000.0, float(value)))
             except (TypeError, ValueError):
                 pass
-    row = db().get(M.MemberAccess, m.id) or M.MemberAccess(member_id=m.id)
-    row.allow, row.deny, row.limits = allow, deny, limits
-    db().add(row)
-    db().commit()
+    import unitid
+    if unitid.enabled():
+        try:
+            unitid.access_person(m.id, allow, deny, limits)       # права живут в UNIT ID, здесь — копия
+        except unitid.UnitIdError as error:
+            raise ToolError(str(error)) from error
+        db().expire_all()
+    else:
+        row = db().get(M.MemberAccess, m.id) or M.MemberAccess(member_id=m.id)
+        row.allow, row.deny, row.limits = allow, deny, limits
+        db().add(row)
+        db().commit()
     return {"text": f"Личные права {m.name} сохранены", "summary": m.name, "link": f"/access/person/{m.id}"}
