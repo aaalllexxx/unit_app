@@ -27,7 +27,6 @@ ISSUER = os.environ.get("LAB_ISSUER", "https://auth.labunit.ru").rstrip("/")
 CLIENT_ID = os.environ.get("LAB_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("LAB_CLIENT_SECRET", "")
 PULL_EVERY = 120
-_services = {"at": 0.0, "items": []}
 _lock = threading.Lock()
 
 
@@ -146,20 +145,6 @@ def pull() -> int:
                 changed += 1
         s.commit()
     return changed
-
-
-def services() -> list:
-    """Сервисы UNIT (название, адрес, значок) — для меню «Сервисы UNIT»."""
-    if time.time() - _services["at"] < 600 and _services["items"]:
-        return _services["items"]
-    with _lock:
-        try:
-            with urllib.request.urlopen(ISSUER + "/api/services", timeout=5) as response:
-                _services["items"] = json.loads(response.read().decode()).get("services") or []
-        except (urllib.error.URLError, OSError, ValueError):
-            pass
-        _services["at"] = time.time()
-    return _services["items"]
 
 
 def _worker() -> None:

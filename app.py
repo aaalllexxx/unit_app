@@ -1419,10 +1419,7 @@ def common():
     staff = access.can(me_, "task.work")
     unread = db().scalar(select(func.count()).select_from(M.Notice).where(
         M.Notice.member_id == me_.id, M.Notice.read_at.is_(None))) if me_ else 0
-    import unitid
-    here = SITE.rstrip("/")
     return {"me": me_, "can": lambda key: access.can(me_, key), "statuses": M.STATUSES, "today": date.today(),
-            "services": [x for x in unitid.services() if x.get("url", "").rstrip("/") != here] if me_ else [],
             "support_url": "/support",
             "view_titles": {v: access.view_title(db(), v) for v in (me_.views if me_ else [])},
             "issuer": ISSUER, "unread": unread, "now_hour": datetime.now().hour,

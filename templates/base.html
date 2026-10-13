@@ -51,12 +51,6 @@
       {% if can('page.admin') %}{{ nav('/access', 'key', 'Доступы', 'Доступы', here.startswith('/access')) }}{% endif %}
       {% if can('ai.settings') %}{{ nav('/admin/ai', 'settings', 'ИИ лаборатории', 'ИИ', here == '/admin/ai') }}{% endif %}
       {% endif %}
-      {% if services %}
-      <span class="side-label label-mono">Сервисы UNIT</span>
-      {% for sv in services %}
-      <a class="side-link ext" href="{{ sv.url }}" title="{{ sv.description or sv.name }}">{{ icon(sv.icon, 18) }}<span class="full">{{ sv.name }}</span><span class="short">{{ sv.name.split()[0] }}</span><span class="count">{{ icon('external', 13) }}</span></a>
-      {% endfor %}
-      {% endif %}
       <button class="side-link tab tab-more" type="button" data-sheet-open="more-sheet">{{ icon('more', 18) }}<span class="short">Ещё</span>{% if unread %}<span class="dot-count">{{ unread }}</span>{% endif %}</button>
     </nav>
     {% else %}<nav></nav>{% endif %}
@@ -117,7 +111,6 @@
       {% if can('ai.settings') %}<a href="/admin/ai">{{ icon('settings', 22) }}ИИ лаборатории</a>{% endif %}
       <a href="/settings">{{ icon('settings', 22) }}Настройки</a>
       <a href="/support">{{ icon('help', 22) }}Поддержка</a>
-      {% for sv in services %}<a href="{{ sv.url }}">{{ icon(sv.icon, 22) }}{{ sv.name }}</a>{% endfor %}
       <a href="{{ issuer }}/apps">{{ icon('key', 22) }}UNIT ID</a>
     </div>
     {% if me.views|length > 1 %}

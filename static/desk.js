@@ -78,12 +78,14 @@
         });
         if (!found) items.unshift(updated);
         notifyTool('files');
+        notifyTool('links');
         queueLayout();
     }
 
     function removeItemFromState(id) {
         items = items.filter(function (it) { return it.id !== id; });
         notifyTool('files');
+        notifyTool('links');
     }
 
     function notifyTool(toolId) {
@@ -110,10 +112,11 @@
     function clamp(win) {
         var cw = canvas.clientWidth || 800;
         var ch = canvas.clientHeight || 600;
-        win.w = Math.min(1, Math.max(MIN_W / cw, win.w));
-        win.h = Math.min(0.95, Math.max(MIN_H / ch, win.h));
-        win.x = Math.min(1 - Math.min(win.w, 0.2), Math.max(-win.w + 0.15, win.x));
-        win.y = Math.min(1 - 44 / ch, Math.max(0, win.y));
+        // окно целиком внутри стола: не уходит за края и под панель инструментов
+        win.w = Math.min(1, Math.max(Math.min(1, MIN_W / cw), win.w));
+        win.h = Math.min(1, Math.max(Math.min(1, MIN_H / ch), win.h));
+        win.x = Math.min(1 - win.w, Math.max(0, win.x));
+        win.y = Math.min(1 - win.h, Math.max(0, win.y));
     }
 
     function cascade(def) {
@@ -232,6 +235,9 @@
                         win.x = s.wx + (s.ww - w);
                         win.w = w;
                     }
+                    if (side.indexOf('l') >= 0 && win.x < 0) { win.w += win.x; win.x = 0; }
+                    win.w = Math.min(win.w, 1 - win.x);
+                    win.h = Math.min(win.h, 1 - win.y);
                     place(win);
                 };
 
@@ -1197,9 +1203,13 @@
         h: 0.58,
         mount: function (body, win) {
             function render() {
-                var links = items.filter(function (it) { return it.kind === 'link'; });
+                var typed = ($('[data-l-url]', body) || {}).value || '';   // набранное не теряем при обновлении
+                // ссылки выбранного в шапке проекта (или все, если проект не выбран)
+                var links = items.filter(function (it) {
+                    return it.kind === 'link' && (!selectedProject || String(it.project_id) === String(selectedProject));
+                });
                 body.innerHTML = '<div class="wt-bar">'
-                    + '<input class="wt-input grow" data-l-url placeholder="https://… новая ссылка">'
+                    + '<input class="wt-input grow" data-l-url placeholder="https://… новая ссылка" value="' + esc(typed) + '">'
                     + '<button class="wt-btn is-primary" type="button" data-l-add>' + icon('plus', 12) + 'Добавить</button>'
                     + '</div>'
                     + '<div class="wt-scroll">'
@@ -1213,13 +1223,14 @@
                             + '<a class="wt-btn is-icon" href="' + esc(it.data.url) + '" target="_blank" rel="noopener" title="Перейти">' + icon('external', 13) + '</a>'
                             + '<button class="wt-btn is-icon" type="button" data-del-link="' + it.id + '" title="Удалить">' + icon('trash', 13) + '</button>'
                             + '</div>';
-                    }).join('') + '</div>' : '<div class="empty small">Закладок пока нет. Вставьте ссылку сверху.</div>')
+                    }).join('') + '</div>' : '<div class="empty small">' + (selectedProject ? 'По этому проекту ссылок пока нет.' : 'Закладок пока нет.') + ' Вставьте ссылку сверху.</div>')
                     + '</div>';
 
                 $('[data-l-add]', body).addEventListener('click', function () {
                     var u = ($('[data-l-url]', body).value || '').trim();
                     if (!u) return;
-                    LAB.api('/api/desk', { kind: 'link', url: u, title: u.replace(/^https?:\/\//, '').split('/')[0] }).then(function (res) {
+                    LAB.api('/api/desk', { kind: 'link', url: u, title: u.replace(/^https?:\/\//, '').split('/')[0], project_id: selectedProject || '' }).then(function (res) {
+                        $('[data-l-url]', body).value = '';
                         updateItemInState(res);
                         render();
                     }).catch(fail);
@@ -1237,7 +1248,7 @@
             }
 
             render();
-            return {};
+            return { refresh: render };
         }
     });
 
@@ -1396,6 +1407,7 @@
     projectFilterEl.addEventListener('change', function (e) {
         selectedProject = e.target.value;
         notifyTool('files');
+        notifyTool('links');
     });
 
     // Загрузка файлов через <input type="file">
@@ -1505,6 +1517,7 @@
         LAB.api('/api/desk/state').then(function (st) {
             items = st.items || items;
             notifyTool('files');
+            notifyTool('links');
             applyLayout(st.layout || {});
         }).catch(fail);
     });

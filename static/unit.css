@@ -999,7 +999,14 @@ pre:empty, pre code:empty, .code-block:empty { display: none !important; }
    Как агент наставника в школе: лента по центру, шаги агента — тихими строками с тонкой
    линией, всё управление (файлы, режим, модель с ценой) — внутри поля ввода. Страница
    прокручивается целиком: шапка чата прилипает под верхней панелью, поле ввода — к низу. */
-.view:has(> .ac) { max-width: 1240px; padding-bottom: 0; }
+.view:has(> .ac) { max-width: none; padding-bottom: 0; }
+/* разговор, поле ввода и подсказки стоят посередине всей свободной от меню ширины, а не колонки справа
+   от списка чатов: сдвиг влево на половину колонки списка (236 + 28), пока хватает места */
+@media (min-width: 901px) {
+  .ac:not(.ac-compact) .ac-main { container-type: inline-size; }
+  .ac:not(.ac-compact) .ac-main > :is(.ac-feed, .ac-pending, .ac-composer, .ac-chips) {
+    translate: calc(-1 * clamp(0px, (100cqw - var(--ac-w)) / 2, 132px)) 0; }
+}
 .ac { --ac-top: 62px; --ac-w: 780px; display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 28px; align-items: start;
   min-height: calc(100dvh - 62px - 34px); }
 
@@ -1373,6 +1380,8 @@ dialog.ac-sheet[open] { display: flex; flex-direction: column; }
   .ac-bar { margin: 0 -6px; }
   .ac-bubble { max-width: 88%; }
   .ac:not(.ac-compact) .ac-composer { bottom: calc(64px + env(safe-area-inset-bottom)); padding-bottom: 6px; }
+  /* место под нижней навигацией: иначе в конце чата «прилипшее» поле ввода поднимается на последние сообщения */
+  .ac:not(.ac-compact) .ac-main { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .ac-pill { padding: 0 9px; }
   .ac-pill [data-mode-label] { display: none; }
   .ac-model-name { max-width: 110px; }
